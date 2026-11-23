@@ -665,6 +665,16 @@ export default function App() {
           body: JSON.stringify({ project: targetProject, language }),
         }
       );
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(
+          language === 'en'
+            ? 'Server returned non-JSON response. Please check Gemini API key configuration.'
+            : 'Сервер вернул невалидный ответ. Проверьте конфигурацию GEMINI_API_KEY на сервере.'
+        );
+      }
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(

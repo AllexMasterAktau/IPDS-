@@ -138,7 +138,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
               onClick={onRunAnalysis}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer shadow-xs"
             >
-              <span>{analyzing ? t.report.runningAnalyze : t.report.runAnalyze}</span>
+              {analyzing ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>{language === 'en' ? 'Analysis in progress...' : 'Выполняется анализ...'}</span>
+                </>
+              ) : (
+                <span>{t.report.runAnalyze}</span>
+              )}
             </button>
           )}
         </div>

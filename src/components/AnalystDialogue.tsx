@@ -165,14 +165,21 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
             onClick={onRunAnalysis}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
           >
-            <Play className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
-            <span>
-              {analyzing
-                ? t.dialogue.analyzing
-                : project.analysis
-                ? t.dialogue.reanalyze
-                : t.dialogue.analyze}
-            </span>
+            {analyzing ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                <span>{language === 'en' ? 'Analysis in progress...' : 'Выполняется анализ...'}</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
+                <span>
+                  {project.analysis
+                    ? t.dialogue.reanalyze
+                    : t.dialogue.analyze}
+                </span>
+              </>
+            )}
           </button>
 
           {project.analysis && (
@@ -199,39 +206,7 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
         </div>
       </div>
 
-      {/* Панель локальных документов проекта */}
-      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-[#1E2022]">
-            {t.dialogue.docsTitle} ({project.documents.length})
-          </div>
-          <span className="inline-flex items-center gap-1 text-[11px] text-[#5C6066]">
-            <Lock className="w-3 h-3 text-[#B88B4A]" />
-            <span>{t.dialogue.docsLocalBadge}</span>
-          </span>
-        </div>
 
-        {project.documents.length === 0 ? (
-          <div className="text-xs text-[#5C6066]">{t.dialogue.docsEmpty}</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {project.documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] text-xs"
-              >
-                <FileText className="w-4 h-4 text-[#B88B4A] shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-[#1E2022] font-medium truncate">{doc.name}</div>
-                  <div className="text-[11px] text-[#5C6066] truncate">
-                    {doc.previewNote}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* История диалога с ИИ */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col">
