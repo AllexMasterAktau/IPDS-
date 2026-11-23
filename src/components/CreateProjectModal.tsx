@@ -131,6 +131,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       updatedAt: now,
     };
 
+    // Гарантированное локальное сохранение (Local-First) сразу при нажатии
+    const initialSessionToken = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    onCreated(newProject, initialSessionToken, undefined, null);
+
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -145,31 +149,26 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         throw new Error(data.error || t.createModal.errCreateFailed);
       }
 
-      const savedProject: ProjectRecord = data.project;
+      const savedProject: ProjectRecord = data.project || newProject;
 
       if (data.newlyGeneratedKey) {
         setCreatedNotice({
           project: savedProject,
-          sessionToken: data.sessionToken,
+          sessionToken: data.sessionToken || initialSessionToken,
           accessKeyHint: data.accessKeyHint,
           newlyGeneratedKey: data.newlyGeneratedKey,
         });
       } else {
-        onCreated(savedProject, data.sessionToken, data.accessKeyHint, null);
+        onCreated(savedProject, data.sessionToken || initialSessionToken, data.accessKeyHint, null);
         resetAndClose();
       }
     } catch (err) {
-      // Local-First fallback при отсутствии сети/сервера: сохраняем локально в очередь
-      const offlineProject: ProjectRecord = {
-        ...newProject,
-        leadSyncStatus: 'error',
-        leadSyncMessage:
-          err instanceof Error
-            ? `Offline save: ${err.message}`
-            : 'Saved locally (offline).',
-      };
-      onCreated(offlineProject, '', undefined, null);
-      resetAndClose();
+      // Проект уже сохранён локально, но выводим понятное уведомление об ошибке вместо тихого перехода на пустой экран
+      setError(
+        err instanceof Error
+          ? `${t.createModal.errCreateFailed}: ${err.message}`
+          : t.createModal.errCreateFailed
+      );
     } finally {
       setSubmitting(false);
     }

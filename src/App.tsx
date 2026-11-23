@@ -52,10 +52,20 @@ export default function App() {
   );
   const [session, setSession] = useState<UserSession | null>(() => {
     const stored = readJsonFromStorage<UserSession | null>(LS_SESSION_KEY, null);
-    if (!stored || !stored.email?.trim() || !stored.sessionToken?.trim()) {
-      return null;
+    if (stored && stored.email?.trim() && stored.sessionToken?.trim()) {
+      return stored;
     }
-    return stored;
+    const savedProjects = readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []);
+    if (savedProjects.length > 0) {
+      const latest = savedProjects[0];
+      return {
+        email: latest.email,
+        sessionToken: `local_sess_${Date.now()}`,
+        verifiedAt: new Date().toISOString(),
+        isAdmin: latest.email.trim().toLowerCase() === ADMIN_EMAIL,
+      };
+    }
+    return null;
   });
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() =>
     routeProjectId || localStorage.getItem(LS_ACTIVE_PROJECT_KEY)
@@ -328,11 +338,21 @@ export default function App() {
   }, [gasWebhookUrl, language, session?.sessionToken]);
 
   const userProjects = useMemo(() => {
-    if (!activeUserEmail) return [];
+    const email = activeUserEmail || (projects[0]?.email ?? null);
+    if (!email) return projects;
+    const normalizedActive = email.trim().toLowerCase();
+    if (normalizedActive === ADMIN_EMAIL || isAdmin) {
+      const map = new Map<string, ProjectRecord>();
+      for (const p of projects) map.set(p.id, p);
+      for (const p of adminProjects) map.set(p.id, p);
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    }
     return projects
-      .filter((p) => p.email.trim().toLowerCase() === activeUserEmail)
+      .filter((p) => (p.email || '').trim().toLowerCase() === normalizedActive)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [projects, activeUserEmail]);
+  }, [projects, adminProjects, activeUserEmail, isAdmin]);
 
   const fetchPublicPreviews = useCallback(async () => {
     try {

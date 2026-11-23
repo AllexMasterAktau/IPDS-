@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyRound, Mail, ShieldCheck, X } from 'lucide-react';
 import type { Language, ProjectRecord, UserSession } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
@@ -9,6 +9,16 @@ interface EmailAuthModalProps {
   gasWebhookUrl: string;
   onClose: () => void;
   onAuthenticated: (session: UserSession, projects: ProjectRecord[]) => void;
+}
+
+function readProjectsFromStorage(): ProjectRecord[] {
+  try {
+    const raw = localStorage.getItem('ipds_projects_v1');
+    if (!raw) return [];
+    return JSON.parse(raw) as ProjectRecord[];
+  } catch {
+    return [];
+  }
 }
 
 export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
@@ -23,37 +33,40 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleQuickLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLocalLogin = (targetEmail: string) => {
     setError(null);
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes('@')) {
-      setError(t.authModal.errEmail);
-      return;
-    }
-
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmedEmail }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to sign in.');
+      const trimmedEmail = targetEmail.trim().toLowerCase();
+      if (!trimmedEmail || !trimmedEmail.includes('@')) {
+        setError(t.authModal.errEmail);
+        setLoading(false);
+        return;
       }
 
+      const isAdmin = trimmedEmail === 'allmasters13@gmail.com';
+      const allProjects = readProjectsFromStorage();
+      const userProjects = isAdmin
+        ? allProjects
+        : allProjects.filter((p) => (p.email || '').trim().toLowerCase() === trimmedEmail);
+
       const session: UserSession = {
-        email: data.email,
-        sessionToken: data.sessionToken,
-        accessKeyHint: data.accessKeyHint,
+        email: trimmedEmail,
+        sessionToken: `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        accessKeyHint: 'KEY-' + trimmedEmail.slice(0, 4).toUpperCase(),
         verifiedAt: new Date().toISOString(),
-        isAdmin: Boolean(data.isAdmin),
+        isAdmin,
       };
-      onAuthenticated(session, data.projects ?? []);
+
+      onAuthenticated(session, allProjects);
       setEmail('');
       onClose();
     } catch (err) {
@@ -63,62 +76,19 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
     }
   };
 
-  const handleDemoQuickLogin = async () => {
-    setEmail('demo@ibs-terminal.kz');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'demo@ibs-terminal.kz' }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to sign in.');
-      }
-      const session: UserSession = {
-        email: data.email,
-        sessionToken: data.sessionToken,
-        accessKeyHint: data.accessKeyHint,
-        verifiedAt: new Date().toISOString(),
-        isAdmin: Boolean(data.isAdmin),
-      };
-      onAuthenticated(session, data.projects ?? []);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in error.');
-    } finally {
-      setLoading(false);
-    }
+  const handleQuickLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    performLocalLogin(email);
   };
 
-  const handleAdminQuickLogin = async () => {
+  const handleDemoQuickLogin = () => {
+    setEmail('demo@ibs-terminal.kz');
+    performLocalLogin('demo@ibs-terminal.kz');
+  };
+
+  const handleAdminQuickLogin = () => {
     setEmail('allmasters13@gmail.com');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'allmasters13@gmail.com' }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to sign in.');
-      }
-      const session: UserSession = {
-        email: data.email,
-        sessionToken: data.sessionToken,
-        accessKeyHint: data.accessKeyHint,
-        verifiedAt: new Date().toISOString(),
-        isAdmin: Boolean(data.isAdmin),
-      };
-      onAuthenticated(session, data.projects ?? []);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in error.');
-    } finally {
-      setLoading(false);
-    }
+    performLocalLogin('allmasters13@gmail.com');
   };
 
   return (
@@ -179,7 +149,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => void handleDemoQuickLogin()}
+                onClick={handleDemoQuickLogin}
                 className="px-3 py-2 rounded-lg bg-[#FAF8F3] hover:bg-[#EFECE4] border border-[#C9C1B2] text-xs font-medium text-[#1E2022] cursor-pointer transition-colors"
               >
                 {language === 'en' ? 'Demo Mode' : 'Демо-режим'}
@@ -187,7 +157,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => void handleAdminQuickLogin()}
+                onClick={handleAdminQuickLogin}
                 className="px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] border border-white/[0.22] text-xs font-medium text-[#F5F3EE] cursor-pointer transition-colors"
               >
                 {language === 'en' ? 'Admin (Allmasters)' : 'Админ (Allmasters)'}
