@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyRound, Mail, ShieldCheck, X } from 'lucide-react';
 import type { Language, ProjectRecord, UserSession } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
@@ -11,16 +11,6 @@ interface EmailAuthModalProps {
   onAuthenticated: (session: UserSession, projects: ProjectRecord[]) => void;
 }
 
-function readProjectsFromStorage(): ProjectRecord[] {
-  try {
-    const raw = localStorage.getItem('ipds_projects_v1');
-    if (!raw) return [];
-    return JSON.parse(raw) as ProjectRecord[];
-  } catch {
-    return [];
-  }
-}
-
 export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
   language,
   isOpen,
@@ -30,65 +20,66 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
 }) => {
   const t = getTranslations(language);
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setError(null);
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const performLocalLogin = (targetEmail: string) => {
-    setError(null);
-    setLoading(true);
-    try {
-      const trimmedEmail = targetEmail.trim().toLowerCase();
-      if (!trimmedEmail || !trimmedEmail.includes('@')) {
-        setError(t.authModal.errEmail);
-        setLoading(false);
-        return;
-      }
-
-      const isAdmin = trimmedEmail === 'allmasters13@gmail.com';
-      const allProjects = readProjectsFromStorage();
-      const userProjects = isAdmin
-        ? allProjects
-        : allProjects.filter((p) => (p.email || '').trim().toLowerCase() === trimmedEmail);
-
-      const session: UserSession = {
-        email: trimmedEmail,
-        sessionToken: `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        accessKeyHint: 'KEY-' + trimmedEmail.slice(0, 4).toUpperCase(),
-        verifiedAt: new Date().toISOString(),
-        isAdmin,
-      };
-
-      onAuthenticated(session, allProjects);
-      setEmail('');
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in error.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleQuickLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    performLocalLogin(email);
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) return;
+
+    const lowerEmail = trimmed.toLowerCase();
+    const isAdmin = lowerEmail === 'allmasters13@gmail.com';
+    const session: UserSession = {
+      email: lowerEmail,
+      sessionToken: `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      verifiedAt: new Date().toISOString(),
+      isAdmin,
+    };
+
+    const existingProjects: ProjectRecord[] = JSON.parse(
+      localStorage.getItem('ipds_projects_v1') || '[]'
+    );
+
+    onAuthenticated(session, existingProjects);
+    setEmail('');
+    onClose();
   };
 
   const handleDemoQuickLogin = () => {
-    setEmail('demo@ibs-terminal.kz');
-    performLocalLogin('demo@ibs-terminal.kz');
+    const demoEmail = 'demo@ibs-terminal.kz';
+    const session: UserSession = {
+      email: demoEmail,
+      sessionToken: `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      verifiedAt: new Date().toISOString(),
+      isAdmin: false,
+    };
+
+    const existingProjects: ProjectRecord[] = JSON.parse(
+      localStorage.getItem('ipds_projects_v1') || '[]'
+    );
+
+    onAuthenticated(session, existingProjects);
+    setEmail('');
+    onClose();
   };
 
   const handleAdminQuickLogin = () => {
-    setEmail('allmasters13@gmail.com');
-    performLocalLogin('allmasters13@gmail.com');
+    const adminEmail = 'allmasters13@gmail.com';
+    const session: UserSession = {
+      email: adminEmail,
+      sessionToken: `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      verifiedAt: new Date().toISOString(),
+      isAdmin: true,
+    };
+
+    const existingProjects: ProjectRecord[] = JSON.parse(
+      localStorage.getItem('ipds_projects_v1') || '[]'
+    );
+
+    onAuthenticated(session, existingProjects);
+    setEmail('');
+    onClose();
   };
 
   return (
@@ -110,12 +101,6 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
         </div>
 
         <div className="p-6 space-y-5">
-          {error && (
-            <div className="rounded-lg bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs text-rose-800">
-              {error}
-            </div>
-          )}
-
           <form onSubmit={handleQuickLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-[#3A3D42] mb-1.5">
@@ -132,11 +117,10 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
             </div>
             <button
               type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4 text-[#F5F3EE]" />
-              <span>{loading ? t.authModal.checking : t.authModal.verifyBtn}</span>
+              <span>{t.authModal.verifyBtn}</span>
             </button>
           </form>
 
@@ -148,7 +132,6 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={loading}
                 onClick={handleDemoQuickLogin}
                 className="px-3 py-2 rounded-lg bg-[#FAF8F3] hover:bg-[#EFECE4] border border-[#C9C1B2] text-xs font-medium text-[#1E2022] cursor-pointer transition-colors"
               >
@@ -156,7 +139,6 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
               </button>
               <button
                 type="button"
-                disabled={loading}
                 onClick={handleAdminQuickLogin}
                 className="px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] border border-white/[0.22] text-xs font-medium text-[#F5F3EE] cursor-pointer transition-colors"
               >
