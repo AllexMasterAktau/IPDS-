@@ -52,7 +52,7 @@ export const TRANSLATIONS = {
       closeMenu: 'Закрыть меню',
       navWelcome: 'Обзор терминала',
       navProjects: 'Мои проекты',
-      navDialogue: 'Диалог с аналитиком',
+      navDialogue: 'Диалог с Аналитиком',
       navReport: 'Отчёт и модель',
       navAdmin: 'Панель администратора',
       activeProjects: 'Активные проекты',
@@ -92,7 +92,7 @@ export const TRANSLATIONS = {
         {
           title: '04. Память проектов и диалога по E-mail',
           description:
-            'Подтвердите доступ по одноразовому коду или персональному ключу, чтобы открыть сохранённые отчёты и продолжить диалог с ИИ с любого устройства.',
+            'Подтвердите доступ по одноразовому коду или персональному ключу, чтобы открыть сохранённые отчёты и продолжить диалог с Аналитиком с любого устройства.',
         },
       ],
       bottomTitle: 'Готовы оценить новый инвестиционный проект или бизнес-идею?',
@@ -491,7 +491,7 @@ export const TRANSLATIONS = {
         {
           title: '04. Project & Dialogue Memory via E-mail',
           description:
-            'Verify access via a one-time code or personal access key to reopen saved reports and continue your AI analyst conversation from any device.',
+            'Verify access via a one-time code or personal access key to reopen saved reports and continue your conversation with the Analyst from any device.',
         },
       ],
       bottomTitle: 'Ready to evaluate a new investment project or business idea?',
