@@ -14,10 +14,10 @@ import type {
  * (настраивается в панели Settings > Secrets в Google AI Studio или в файле .env).
  */
 function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
   if (!apiKey) {
     throw new Error(
-      'GEMINI_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.'
+      'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.'
     );
   }
   return new GoogleGenAI({

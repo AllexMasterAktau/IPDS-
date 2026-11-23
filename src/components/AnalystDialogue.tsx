@@ -208,6 +208,40 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
 
 
 
+      {/* Компактный блок материалов на ПК пользователя */}
+      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-semibold text-[#1E2022]">
+            {t.dialogue.userPcDocsTitle} ({project.documents.length})
+          </div>
+          <span className="inline-flex items-center gap-1 text-[11px] text-[#5C6066]">
+            <Lock className="w-3 h-3 text-[#B88B4A]" />
+            <span>{t.dialogue.userPcBadge}</span>
+          </span>
+        </div>
+
+        {project.documents.length === 0 ? (
+          <div className="text-xs text-[#5C6066]">{t.dialogue.docsEmpty}</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {project.documents.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] text-xs"
+              >
+                <FileText className="w-4 h-4 text-[#B88B4A] shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[#1E2022] font-medium truncate">{doc.name}</div>
+                  <div className="text-[11px] text-[#5C6066] truncate">
+                    {doc.previewNote} · {doc.charCount} симв.
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* История диалога с ИИ */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col">
         <div className="px-5 py-3.5 border-b border-[#E5E0D5] flex items-center justify-between">
