@@ -6,14 +6,14 @@ import {
   KeyRound,
   LogOut,
   MessageSquare,
-  Settings2,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import type { Language, ProjectRecord } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
 import { getRegionDisplayLabel } from '../utils/financialModel';
 
-export type ActiveTab = 'welcome' | 'projects' | 'dialogue' | 'report';
+export type ActiveTab = 'welcome' | 'projects' | 'dialogue' | 'report' | 'admin';
 
 interface SidebarProps {
   language: Language;
@@ -21,9 +21,10 @@ interface SidebarProps {
   onSelectTab: (tab: ActiveTab) => void;
   onOpenAuthModal: () => void;
   onSwitchEmail: () => void;
-  onOpenGasModal: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  isAdmin?: boolean;
+  adminProjectsCount?: number;
   activeUserEmail: string | null;
   projects: ProjectRecord[];
   previewCount: number;
@@ -39,9 +40,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   onOpenAuthModal,
   onSwitchEmail,
-  onOpenGasModal,
   onLogout,
   isAuthenticated,
+  isAdmin = false,
+  adminProjectsCount,
   activeUserEmail,
   projects,
   previewCount,
@@ -79,6 +81,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <FileText className="w-4 h-4 shrink-0" />,
       disabled: !activeProject,
     },
+    ...(isAdmin
+      ? [
+          {
+            id: 'admin' as const,
+            label: t.sidebar.navAdmin,
+            icon: <ShieldCheck className="w-4 h-4 shrink-0" />,
+            count: adminProjectsCount,
+          },
+        ]
+      : []),
   ];
 
   const sidebarContent = (
@@ -245,18 +257,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="truncate">{t.sidebar.loginByEmail}</span>
           </button>
         )}
-
-        <button
-          type="button"
-          onClick={() => {
-            onOpenGasModal();
-            onCloseMobile();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/[0.22] hover:border-white/[0.36] bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] text-xs font-medium text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5F3EE]/30 transition-colors cursor-pointer"
-        >
-          <Settings2 className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
-          <span className="truncate">{t.sidebar.gasSettings}</span>
-        </button>
       </div>
 
       {/* Футер с подписью разработчика и ссылкой на Telegram */}

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Menu, Plus } from 'lucide-react';
+import { AdminPanelView } from './components/AdminPanelView';
 import { AnalystDialogue } from './components/AnalystDialogue';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { EmailAuthModal } from './components/EmailAuthModal';
-import { GasIntegrationModal } from './components/GasIntegrationModal';
 import { ProjectsListView } from './components/ProjectsListView';
 import { ReportView } from './components/ReportView';
 import { ActiveTab, Sidebar } from './components/Sidebar';
@@ -12,6 +12,7 @@ import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
 import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
 import type {
+  AdminUserSummary,
   CurrencyCode,
   FinancialInputs,
   FxRateMap,
@@ -22,10 +23,10 @@ import type {
   UserSession,
 } from './types/ipds';
 
+const ADMIN_EMAIL = 'allmasters13@gmail.com';
 const LS_PROJECTS_KEY = 'ipds_projects_v1';
 const LS_SESSION_KEY = 'ipds_session_v1';
 const LS_ACTIVE_PROJECT_KEY = 'ipds_active_project_v1';
-const LS_GAS_URL_KEY = 'ipds_gas_webhook_url_v1';
 const LS_LANGUAGE_KEY = 'ipds_language_v1';
 const LS_DISPLAY_CURRENCY_KEY = 'ipds_display_currency_v1';
 const LS_FX_STATE_KEY = 'ipds_fx_state_v1';
@@ -59,12 +60,10 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() =>
     routeProjectId || localStorage.getItem(LS_ACTIVE_PROJECT_KEY)
   );
-  const [gasWebhookUrl, setGasWebhookUrl] = useState<string>(() => {
-    const stored = localStorage.getItem(LS_GAS_URL_KEY);
-    if (stored !== null) return stored;
-    // Опциональный URL из Vite env (VITE_GAS_WEBHOOK_URL) при наличии
-    return (import.meta.env.VITE_GAS_WEBHOOK_URL as string | undefined) || '';
-  });
+  const gasWebhookUrl = useMemo(
+    () => ((import.meta.env.VITE_GAS_WEBHOOK_URL as string | undefined) || '').trim(),
+    []
+  );
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     if (isReportRoute) return 'report';
@@ -73,11 +72,15 @@ export default function App() {
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [gasModalOpen, setGasModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [previewProjects, setPreviewProjects] = useState<PublicProjectPreview[]>([]);
+  const [adminProjects, setAdminProjects] = useState<ProjectRecord[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
+  const [adminGasConfigured, setAdminGasConfigured] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminSyncingPending, setAdminSyncingPending] = useState(false);
 
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem(LS_LANGUAGE_KEY);
@@ -132,11 +135,6 @@ export default function App() {
       localStorage.removeItem(LS_ACTIVE_PROJECT_KEY);
     }
   }, [activeProjectId]);
-
-  const handleSaveGasUrl = (url: string) => {
-    setGasWebhookUrl(url);
-    localStorage.setItem(LS_GAS_URL_KEY, url);
-  };
 
   useEffect(() => {
     localStorage.setItem(LS_LANGUAGE_KEY, language);
@@ -254,6 +252,80 @@ export default function App() {
   );
 
   const isAuthenticated = Boolean(session?.sessionToken && activeUserEmail);
+  const isAdmin = Boolean(isAuthenticated && activeUserEmail === ADMIN_EMAIL);
+
+  const fetchAdminOverview = useCallback(
+    async (tokenOverride?: string) => {
+      const token = tokenOverride || session?.sessionToken;
+      if (!token) return;
+      setAdminLoading(true);
+      try {
+        const res = await fetch('/api/admin/overview', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          projects?: ProjectRecord[];
+          users?: AdminUserSummary[];
+          gasConfigured?: boolean;
+        };
+        if (Array.isArray(data.projects)) {
+          setAdminProjects(data.projects);
+        }
+        if (Array.isArray(data.users)) {
+          setAdminUsers(data.users);
+        }
+        setAdminGasConfigured(Boolean(data.gasConfigured));
+      } catch {
+        // ignore admin fetch network errors
+      } finally {
+        setAdminLoading(false);
+      }
+    },
+    [session?.sessionToken]
+  );
+
+  const handleAdminSyncPending = useCallback(async () => {
+    if (!session?.sessionToken) return;
+    setAdminSyncingPending(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch('/api/admin/sync-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.sessionToken}`,
+        },
+        body: JSON.stringify({ gasWebhookUrl }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        projects?: ProjectRecord[];
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.message ||
+            (language === 'en'
+              ? 'Failed to sync pending leads to Google Sheet.'
+              : 'Не удалось отправить ожидающие заявки в Google Таблицу.')
+        );
+      }
+      if (Array.isArray(data.projects)) {
+        setAdminProjects(data.projects);
+      }
+    } catch (err) {
+      setGlobalError(
+        err instanceof Error
+          ? err.message
+          : language === 'en'
+          ? 'Background sync error.'
+          : 'Ошибка фоновой синхронизации.'
+      );
+    } finally {
+      setAdminSyncingPending(false);
+    }
+  }, [gasWebhookUrl, language, session?.sessionToken]);
 
   const userProjects = useMemo(() => {
     if (!activeUserEmail) return [];
@@ -323,13 +395,19 @@ export default function App() {
             (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           );
         });
+        if (verifiedEmail === ADMIN_EMAIL) {
+          void fetchAdminOverview(session.sessionToken);
+          if (!isReportRoute) {
+            setActiveTab((prev) => (prev === 'welcome' ? 'admin' : prev));
+          }
+        }
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
     };
-  }, [session?.sessionToken, session?.email]);
+  }, [session?.sessionToken, session?.email, fetchAdminOverview, isReportRoute]);
 
   // Если открыто отдельное окно отчёта (?view=report&projectId=...), подгружаем свежий проект с сервера
   useEffect(() => {
@@ -397,20 +475,43 @@ export default function App() {
   }, []);
 
   const activeProject = useMemo(() => {
-    if (!activeUserEmail || !userProjects.length) return null;
-    return userProjects.find((p) => p.id === activeProjectId) ?? userProjects[0];
-  }, [activeUserEmail, userProjects, activeProjectId]);
+    if (!activeUserEmail) return null;
+    if (activeProjectId) {
+      const fromUser = userProjects.find((p) => p.id === activeProjectId);
+      if (fromUser) return fromUser;
+      if (isAdmin) {
+        const fromAdmin = adminProjects.find((p) => p.id === activeProjectId);
+        if (fromAdmin) return fromAdmin;
+      }
+    }
+    return userProjects[0] ?? (isAdmin ? adminProjects[0] ?? null : null);
+  }, [activeUserEmail, userProjects, adminProjects, activeProjectId, isAdmin]);
 
   // Защита от попадания на закрытые вкладки без активного подтверждённого E-mail
   useEffect(() => {
-    if (!isReportRoute && !activeUserEmail && (activeTab === 'dialogue' || activeTab === 'report')) {
+    if (
+      !isReportRoute &&
+      !activeUserEmail &&
+      (activeTab === 'dialogue' || activeTab === 'report' || activeTab === 'admin')
+    ) {
+      setActiveTab('projects');
+    } else if (!isReportRoute && activeTab === 'admin' && activeUserEmail && !isAdmin) {
       setActiveTab('projects');
     }
-  }, [isReportRoute, activeUserEmail, activeTab]);
+  }, [isReportRoute, activeUserEmail, activeTab, isAdmin]);
 
   const upsertLocalProject = useCallback(
     (updated: ProjectRecord) => {
       setProjects((prev) => {
+        const idx = prev.findIndex((p) => p.id === updated.id);
+        const next = idx === -1 ? [updated, ...prev] : [...prev];
+        if (idx !== -1) next[idx] = updated;
+        return next.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      });
+      setAdminProjects((prev) => {
+        if (prev.length === 0) return prev;
         const idx = prev.findIndex((p) => p.id === updated.id);
         const next = idx === -1 ? [updated, ...prev] : [...prev];
         if (idx !== -1) next[idx] = updated;
@@ -446,7 +547,11 @@ export default function App() {
         sessionToken,
         accessKeyHint,
         verifiedAt: new Date().toISOString(),
+        isAdmin: normalizedEmail === ADMIN_EMAIL,
       });
+      if (normalizedEmail === ADMIN_EMAIL) {
+        void fetchAdminOverview(sessionToken);
+      }
     }
     setActiveTab('dialogue');
   };
@@ -457,9 +562,19 @@ export default function App() {
       .filter((p) => p.email.trim().toLowerCase() === verifiedEmail)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-    setSession(newSession);
+    const adminUser = verifiedEmail === ADMIN_EMAIL;
+    setSession({ ...newSession, isAdmin: adminUser });
     setProjects(scopedServerProjects);
     setPreviewProjects([]);
+
+    if (adminUser) {
+      if (scopedServerProjects.length > 0) {
+        setActiveProjectId(scopedServerProjects[0].id);
+      }
+      void fetchAdminOverview(newSession.sessionToken);
+      setActiveTab('admin');
+      return;
+    }
 
     if (scopedServerProjects.length > 0) {
       setActiveProjectId(scopedServerProjects[0].id);
@@ -474,6 +589,9 @@ export default function App() {
     (nextTab: ActiveTab) => {
       setSession(null);
       setProjects([]);
+      setAdminProjects([]);
+      setAdminUsers([]);
+      setAdminGasConfigured(false);
       setActiveProjectId(null);
       localStorage.removeItem(LS_SESSION_KEY);
       localStorage.removeItem(LS_PROJECTS_KEY);
@@ -495,13 +613,17 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     resetToUnauthenticatedState(
-      activeTab === 'dialogue' || activeTab === 'report' ? 'welcome' : activeTab
+      activeTab === 'dialogue' || activeTab === 'report' || activeTab === 'admin'
+        ? 'welcome'
+        : activeTab
     );
   }, [activeTab, resetToUnauthenticatedState]);
 
   const handleSwitchEmail = useCallback(() => {
     resetToUnauthenticatedState(
-      activeTab === 'dialogue' || activeTab === 'report' ? 'projects' : activeTab
+      activeTab === 'dialogue' || activeTab === 'report' || activeTab === 'admin'
+        ? 'projects'
+        : activeTab
     );
     setAuthModalOpen(true);
   }, [activeTab, resetToUnauthenticatedState]);
@@ -573,6 +695,7 @@ export default function App() {
 
   const handleDeleteProject = (projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setAdminProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) {
       setActiveProjectId(null);
     }
@@ -589,7 +712,12 @@ export default function App() {
   // ============================================================================
   if (isReportRoute) {
     const reportProject = activeUserEmail
-      ? userProjects.find((p) => p.id === routeProjectId) ?? activeProject
+      ? userProjects.find((p) => p.id === routeProjectId) ??
+        (isAdmin
+          ? projects.find((p) => p.id === routeProjectId) ??
+            adminProjects.find((p) => p.id === routeProjectId)
+          : undefined) ??
+        activeProject
       : null;
 
     return (
@@ -708,6 +836,8 @@ export default function App() {
       ? t.header.breadcrumbWelcome
       : activeTab === 'projects'
       ? t.header.breadcrumbProjects
+      : activeTab === 'admin'
+      ? t.header.breadcrumbAdmin
       : activeTab === 'dialogue'
       ? `${t.header.breadcrumbDialoguePrefix} / ${
           activeProject?.projectName || t.header.breadcrumbDialogueFallback
@@ -723,9 +853,10 @@ export default function App() {
         onSelectTab={setActiveTab}
         onOpenAuthModal={() => setAuthModalOpen(true)}
         onSwitchEmail={handleSwitchEmail}
-        onOpenGasModal={() => setGasModalOpen(true)}
         onLogout={handleLogout}
         isAuthenticated={isAuthenticated}
+        isAdmin={isAdmin}
+        adminProjectsCount={adminProjects.length}
         activeUserEmail={activeUserEmail}
         projects={userProjects}
         previewCount={previewProjects.length}
@@ -882,6 +1013,28 @@ export default function App() {
               analyzing={analyzingProjectId === activeProject.id}
             />
           )}
+          {activeTab === 'admin' && isAdmin && (
+            <AdminPanelView
+              language={language}
+              displayCurrency={displayCurrency}
+              fxRates={fxState.rates}
+              projects={adminProjects}
+              users={adminUsers}
+              gasConfigured={adminGasConfigured}
+              loading={adminLoading}
+              syncingPending={adminSyncingPending}
+              analyzingProjectId={analyzingProjectId}
+              activeProjectId={activeProject?.id ?? null}
+              onRefresh={() => void fetchAdminOverview()}
+              onSyncPending={() => void handleAdminSyncPending()}
+              onSelectProject={(id, targetTab) => {
+                setActiveProjectId(id);
+                setActiveTab(targetTab);
+              }}
+              onRunAnalysis={(proj) => void handleRunAnalysis(proj)}
+              onDeleteProject={handleDeleteProject}
+            />
+          )}
         </main>
 
         {/* Основной футер с тёмной графитовой заливкой и ссылкой на Telegram */}
@@ -914,16 +1067,6 @@ export default function App() {
         language={language}
         onClose={() => setAuthModalOpen(false)}
         onAuthenticated={handleAuthenticated}
-      />
-
-      <GasIntegrationModal
-        isOpen={gasModalOpen}
-        gasWebhookUrl={gasWebhookUrl}
-        onSaveWebhookUrl={handleSaveGasUrl}
-        projects={userProjects}
-        language={language}
-        onProjectSynced={upsertLocalProject}
-        onClose={() => setGasModalOpen(false)}
       />
     </div>
   );

@@ -4,12 +4,16 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { analyzeProjectWithGemini, chatWithAnalystGemini } from './server/gemini';
 import {
+  ADMIN_EMAIL,
   createOtpForEmail,
   deleteProjectById,
   ensureUserAndSession,
+  getAllProjectsForAdmin,
+  getAllUsersForAdmin,
   getProjectById,
   getPublicProjectPreviews,
   getUserBySessionToken,
+  isAdminEmail,
   normalizeEmail,
   upsertProjectRecord,
   verifyAccessForEmail,
@@ -26,8 +30,7 @@ import type { Language, LocalDocumentDigest, ProjectRecord } from './src/types/i
  *
  * 2. GOOGLE APPS SCRIPT WEB APP URL (Таблица «IPDS — Заявки и контакты МСБ»):
  *    Вставьте URL вашего развёрнутого веб-приложения Google Apps Script ниже
- *    в DEFAULT_GAS_WEBHOOK_URL или задайте переменную окружения GAS_WEBHOOK_URL.
- *    Также URL можно подключить прямо в интерфейсе (раздел «Настройки интеграции»).
+ *    в DEFAULT_GAS_WEBHOOK_URL или задайте переменную окружения GAS_WEBHOOK_URL в .env.
  * ============================================================================
  */
 const DEFAULT_GAS_WEBHOOK_URL = process.env.GAS_WEBHOOK_URL?.trim() || '';
@@ -41,11 +44,8 @@ function extractBearerToken(req: express.Request): string | undefined {
 }
 
 function resolveGasUrl(clientOverrideUrl?: string): string {
-  const candidate = (clientOverrideUrl || DEFAULT_GAS_WEBHOOK_URL || '').trim();
+  const candidate = (DEFAULT_GAS_WEBHOOK_URL || clientOverrideUrl || '').trim();
   if (!candidate) return '';
-  if (!candidate.startsWith('https://script.google.com/')) {
-    return candidate;
-  }
   return candidate;
 }
 
@@ -353,6 +353,7 @@ async function startServer() {
         sessionToken: result.sessionToken,
         accessKeyHint: result.accessKeyHint,
         projects: result.projects ?? [],
+        isAdmin: Boolean(result.isAdmin),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка проверки доступа';
@@ -436,7 +437,11 @@ async function startServer() {
     }
     const token = extractBearerToken(req);
     const sessionData = getUserBySessionToken(token);
-    if (!sessionData || normalizeEmail(sessionData.email) !== normalizeEmail(project.email)) {
+    if (
+      !sessionData ||
+      (normalizeEmail(sessionData.email) !== normalizeEmail(project.email) &&
+        !isAdminEmail(sessionData.email))
+    ) {
       return res.status(403).json({
         error: 'Требуется подтверждение доступа по E-mail для просмотра этого проекта.',
       });
@@ -452,7 +457,11 @@ async function startServer() {
       }
       const token = extractBearerToken(req);
       const sessionData = getUserBySessionToken(token);
-      if (!sessionData || normalizeEmail(sessionData.email) !== normalizeEmail(existing.email)) {
+      if (
+        !sessionData ||
+        (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
+          !isAdminEmail(sessionData.email))
+      ) {
         return res.status(403).json({ error: 'Нет доступа к изменению этого проекта.' });
       }
 
@@ -530,6 +539,16 @@ async function startServer() {
 
   app.post('/api/leads/sheet', async (req, res) => {
     try {
+      const token = extractBearerToken(req);
+      const sessionData = getUserBySessionToken(token);
+      if (!sessionData || !isAdminEmail(sessionData.email)) {
+        return res.status(403).json({
+          ok: false,
+          rows: [],
+          error: 'Доступ разрешён только администратору.',
+          message: 'Доступ разрешён только администратору.',
+        });
+      }
       const gasWebhookUrl = resolveGasUrl(req.body?.gasWebhookUrl);
       const sheetRes = await fetchSheetRowsFromGas(gasWebhookUrl);
       if (sheetRes.status === 'unconfigured') {
@@ -542,6 +561,80 @@ async function startServer() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка чтения таблицы Google Sheets';
       return res.status(500).json({ ok: false, rows: [], error: message, message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // API: Панель администратора (только для allmasters13@gmail.com)
+  // --------------------------------------------------------------------------
+  app.get('/api/admin/overview', (req, res) => {
+    const token = extractBearerToken(req);
+    const sessionData = getUserBySessionToken(token);
+    if (!sessionData || !isAdminEmail(sessionData.email)) {
+      return res.status(403).json({ error: 'Доступ разрешён только администратору.' });
+    }
+    return res.json({
+      ok: true,
+      adminEmail: ADMIN_EMAIL,
+      gasConfigured: Boolean(DEFAULT_GAS_WEBHOOK_URL),
+      projects: getAllProjectsForAdmin(),
+      users: getAllUsersForAdmin(),
+    });
+  });
+
+  app.post('/api/admin/sync-pending', async (req, res) => {
+    try {
+      const token = extractBearerToken(req);
+      const sessionData = getUserBySessionToken(token);
+      if (!sessionData || !isAdminEmail(sessionData.email)) {
+        return res.status(403).json({ error: 'Доступ разрешён только администратору.' });
+      }
+      const gasWebhookUrl = resolveGasUrl(req.body?.gasWebhookUrl);
+      if (!gasWebhookUrl) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Адрес GAS_WEBHOOK_URL не задан в .env или конфигурации сервера.',
+        });
+      }
+
+      const all = getAllProjectsForAdmin();
+      const pending = all.filter((p) => p.leadSyncStatus !== 'synced');
+      let syncedCount = 0;
+
+      for (const lead of pending) {
+        const regionDisplay =
+          lead.region === 'Свой вариант' && lead.customRegion
+            ? lead.customRegion
+            : lead.region;
+        const syncRes = await postToGasWebhook(gasWebhookUrl, {
+          action: 'create_lead',
+          sheetName: 'IPDS — Заявки и контакты МСБ',
+          fullName: lead.fullName,
+          email: normalizeEmail(lead.email),
+          projectName: lead.projectName,
+          region: regionDisplay,
+          category: lead.category || '',
+          comment: lead.comment || '',
+          createdAt: lead.createdAt || new Date().toISOString(),
+          source: 'IPDS Терминал (фоновая синхронизация)',
+        });
+        upsertProjectRecord({
+          ...lead,
+          leadSyncStatus: syncRes.status,
+          leadSyncMessage: syncRes.message,
+        });
+        if (syncRes.ok) syncedCount += 1;
+      }
+
+      return res.json({
+        ok: true,
+        attempted: pending.length,
+        syncedCount,
+        projects: getAllProjectsForAdmin(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка фоновой синхронизации';
+      return res.status(500).json({ ok: false, message, error: message });
     }
   });
 
@@ -562,7 +655,9 @@ async function startServer() {
       const sessionData = getUserBySessionToken(token);
       if (
         existing &&
-        (!sessionData || normalizeEmail(sessionData.email) !== normalizeEmail(existing.email))
+        (!sessionData ||
+          (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
+            !isAdminEmail(sessionData.email)))
       ) {
         return res.status(403).json({ error: 'Доступ к проекту не подтверждён.' });
       }
@@ -603,7 +698,9 @@ async function startServer() {
       const sessionData = getUserBySessionToken(token);
       if (
         existing &&
-        (!sessionData || normalizeEmail(sessionData.email) !== normalizeEmail(existing.email))
+        (!sessionData ||
+          (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
+            !isAdminEmail(sessionData.email)))
       ) {
         return res.status(403).json({ error: 'Доступ к проекту не подтверждён.' });
       }

@@ -52,8 +52,15 @@ function writeStore(data: StoreData): void {
   fs.renameSync(tmpPath, STORE_PATH);
 }
 
+export const ADMIN_EMAIL = 'allmasters13@gmail.com';
+
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return normalizeEmail(email) === ADMIN_EMAIL;
 }
 
 function hashSecret(value: string): string {
@@ -150,6 +157,7 @@ export function verifyAccessForEmail(
   sessionToken?: string;
   accessKeyHint?: string;
   projects?: ProjectRecord[];
+  isAdmin?: boolean;
 } {
   const email = normalizeEmail(emailRaw);
   const store = readStore();
@@ -196,6 +204,7 @@ export function verifyAccessForEmail(
     sessionToken,
     accessKeyHint: user.accessKeyHint,
     projects,
+    isAdmin: isAdminEmail(email),
   };
 }
 
@@ -203,6 +212,7 @@ export function getUserBySessionToken(token: string | undefined): {
   email: string;
   accessKeyHint: string;
   projects: ProjectRecord[];
+  isAdmin: boolean;
 } | null {
   if (!token) return null;
   const store = readStore();
@@ -217,6 +227,7 @@ export function getUserBySessionToken(token: string | undefined): {
     email: found.email,
     accessKeyHint: found.accessKeyHint,
     projects,
+    isAdmin: isAdminEmail(found.email),
   };
 }
 
@@ -240,12 +251,42 @@ export function getProjectById(projectId: string): ProjectRecord | null {
 export function deleteProjectById(projectId: string, email: string): boolean {
   const store = readStore();
   const existing = store.projects[projectId];
-  if (!existing || normalizeEmail(existing.email) !== normalizeEmail(email)) {
+  if (
+    !existing ||
+    (normalizeEmail(existing.email) !== normalizeEmail(email) && !isAdminEmail(email))
+  ) {
     return false;
   }
   delete store.projects[projectId];
   writeStore(store);
   return true;
+}
+
+export function getAllProjectsForAdmin(): ProjectRecord[] {
+  const store = readStore();
+  return Object.values(store.projects).sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
+export function getAllUsersForAdmin(): Array<{
+  email: string;
+  createdAt: string;
+  projectCount: number;
+}> {
+  const store = readStore();
+  const counts = new Map<string, number>();
+  for (const p of Object.values(store.projects)) {
+    const em = normalizeEmail(p.email);
+    counts.set(em, (counts.get(em) ?? 0) + 1);
+  }
+  return Object.values(store.users)
+    .map((u) => ({
+      email: u.email,
+      createdAt: u.createdAt,
+      projectCount: counts.get(normalizeEmail(u.email)) ?? 0,
+    }))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export function getPublicProjectPreviews(limit = 5): PublicProjectPreview[] {

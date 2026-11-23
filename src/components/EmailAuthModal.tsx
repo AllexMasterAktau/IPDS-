@@ -97,6 +97,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
         sessionToken: data.sessionToken,
         accessKeyHint: data.accessKeyHint,
         verifiedAt: new Date().toISOString(),
+        isAdmin: Boolean(data.isAdmin),
       };
       onAuthenticated(session, data.projects ?? []);
       setCredential('');

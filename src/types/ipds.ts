@@ -146,4 +146,12 @@ export interface UserSession {
   sessionToken: string;
   accessKeyHint?: string;
   verifiedAt: string;
+  isAdmin?: boolean;
 }
+
+export interface AdminUserSummary {
+  email: string;
+  createdAt: string;
+  projectCount: number;
+}
+
