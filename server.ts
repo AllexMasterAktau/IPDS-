@@ -333,6 +333,30 @@ async function startServer() {
     }
   });
 
+  app.post('/api/auth/login', (req, res) => {
+    try {
+      const email = String(req.body?.email ?? '').trim();
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: 'Укажите корректный адрес электронной почты.' });
+      }
+      const { user, sessionToken } = ensureUserAndSession(email);
+      const storeProjects = getAllProjectsForAdmin(); // or scoped
+      const userProjects = storeProjects.filter(
+        (p) => normalizeEmail(p.email) === normalizeEmail(email)
+      );
+      return res.json({
+        email: normalizeEmail(email),
+        sessionToken,
+        accessKeyHint: user.accessKeyHint,
+        projects: userProjects,
+        isAdmin: isAdminEmail(email),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка входа';
+      return res.status(500).json({ error: message });
+    }
+  });
+
   app.post('/api/auth/verify', (req, res) => {
     try {
       const email = String(req.body?.email ?? '').trim();
