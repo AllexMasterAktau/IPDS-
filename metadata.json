@@ -1,0 +1,6 @@
+{
+  "name": "IPDS Терминал — Intelligent Business Systems",
+  "description": "Инвестиционная и проектная аналитика в архитектуре Local-First: оценка документов, контуры Цифры и Риски, интерактивный пересчёт и PDF-отчёты.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
