@@ -205,7 +205,7 @@ async function startServer() {
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
-      geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      geminiConfigured: Boolean((process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim()),
       gasConfigured: Boolean(DEFAULT_GAS_WEBHOOK_URL),
     });
   });
@@ -674,11 +674,15 @@ async function startServer() {
   // --------------------------------------------------------------------------
   app.post('/api/projects/:id/analyze', async (req, res) => {
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
-      if (!apiKey) {
+      const serverKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+      const clientApiKey = typeof req.body?.clientApiKey === 'string' ? req.body.clientApiKey.trim() : '';
+      const effectiveKey = serverKey || clientApiKey;
+
+      if (!effectiveKey) {
         return res.status(400).json({
           ok: false,
-          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.',
+          code: 'NO_API_KEY',
+          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Введите ключ Gemini API в браузере.',
         });
       }
 
@@ -691,9 +695,11 @@ async function startServer() {
       }
 
       const token = extractBearerToken(req);
-      const sessionData = getUserBySessionToken(token);
+      const isLocalSession = Boolean(token && token.startsWith('local_sess_'));
+      const sessionData = isLocalSession ? null : getUserBySessionToken(token);
       if (
         existing &&
+        !isLocalSession &&
         (!sessionData ||
           (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
             !isAdminEmail(sessionData.email)))
@@ -709,7 +715,7 @@ async function startServer() {
       };
 
       const language: Language = req.body?.language === 'en' ? 'en' : 'ru';
-      const analysis = await analyzeProjectWithGemini(mergedProject, language);
+      const analysis = await analyzeProjectWithGemini(mergedProject, language, effectiveKey);
       const saved = upsertProjectRecord({
         ...mergedProject,
         analysis,
@@ -725,11 +731,15 @@ async function startServer() {
 
   app.post('/api/projects/:id/chat', async (req, res) => {
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
-      if (!apiKey) {
+      const serverKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+      const clientApiKey = typeof req.body?.clientApiKey === 'string' ? req.body.clientApiKey.trim() : '';
+      const effectiveKey = serverKey || clientApiKey;
+
+      if (!effectiveKey) {
         return res.status(400).json({
           ok: false,
-          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.',
+          code: 'NO_API_KEY',
+          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Введите ключ Gemini API в браузере.',
         });
       }
 
@@ -742,9 +752,11 @@ async function startServer() {
       }
 
       const token = extractBearerToken(req);
-      const sessionData = getUserBySessionToken(token);
+      const isLocalSession = Boolean(token && token.startsWith('local_sess_'));
+      const sessionData = isLocalSession ? null : getUserBySessionToken(token);
       if (
         existing &&
+        !isLocalSession &&
         (!sessionData ||
           (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
             !isAdminEmail(sessionData.email)))
@@ -772,7 +784,8 @@ async function startServer() {
         promptText,
         newDocuments,
         currentEffectiveInputs,
-        language
+        language,
+        effectiveKey
       );
 
       const now = new Date().toISOString();

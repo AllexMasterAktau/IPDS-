@@ -11,7 +11,7 @@ import { TopBarControls } from './components/TopBarControls';
 import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
 import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
-import { clientAnalyzeProject } from './utils/clientGemini';
+import { analyzeProjectSmart, MissingGeminiKeyError } from './utils/clientGemini';
 import type {
   AdminUserSummary,
   CurrencyCode,
@@ -86,10 +86,8 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [previewProjects, setPreviewProjects] = useState<PublicProjectPreview[]>([]);
-  const [adminProjects, setAdminProjects] = useState<ProjectRecord[]>([]);
-  const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
-  const [adminGasConfigured, setAdminGasConfigured] = useState(false);
+  const [serverGeminiConfigured, setServerGeminiConfigured] = useState<boolean | null>(null);
+  const [forceShowKeyInput, setForceShowKeyInput] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSyncingPending, setAdminSyncingPending] = useState(false);
 
@@ -278,40 +276,94 @@ export default function App() {
 
   const isAuthenticated = Boolean(session?.sessionToken && activeUserEmail);
   const isAdmin = Boolean(isAuthenticated && activeUserEmail === ADMIN_EMAIL);
+  const adminGasConfigured = Boolean(gasWebhookUrl);
 
-  const fetchAdminOverview = useCallback(
-    async (tokenOverride?: string) => {
-      const token = tokenOverride || session?.sessionToken;
-      if (!token) return;
-      setAdminLoading(true);
-      try {
-        const res = await fetch('/api/admin/overview', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          projects?: ProjectRecord[];
-          users?: AdminUserSummary[];
-          gasConfigured?: boolean;
-        };
-        if (Array.isArray(data.projects)) {
-          setAdminProjects(data.projects);
+  // Проверка наличия серверного GEMINI_API_KEY (без обязательного ручного ввода ключа в браузере)
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/health')
+      .then(async (res) => {
+        if (!res.ok) return { geminiConfigured: false };
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) return { geminiConfigured: false };
+        return (await res.json()) as { geminiConfigured?: boolean };
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setServerGeminiConfigured(Boolean(data?.geminiConfigured));
         }
-        if (Array.isArray(data.users)) {
-          setAdminUsers(data.users);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServerGeminiConfigured(false);
         }
-        setAdminGasConfigured(Boolean(data.gasConfigured));
-      } catch {
-        // ignore admin fetch network errors
-      } finally {
-        setAdminLoading(false);
-      }
-    },
-    [session?.sessionToken]
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const adminProjects = useMemo(
+    () =>
+      [...projects].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      ),
+    [projects]
   );
+
+  const adminUsers = useMemo<AdminUserSummary[]>(() => {
+    const map = new Map<string, AdminUserSummary>();
+    for (const p of projects) {
+      const email = (p.email || '').trim().toLowerCase();
+      if (!email) continue;
+      const existing = map.get(email);
+      if (!existing) {
+        map.set(email, {
+          email,
+          createdAt: p.createdAt,
+          projectCount: 1,
+        });
+      } else {
+        existing.projectCount += 1;
+        if (new Date(p.createdAt) < new Date(existing.createdAt)) {
+          existing.createdAt = p.createdAt;
+        }
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [projects]);
+
+  const previewProjects = useMemo<PublicProjectPreview[]>(() => {
+    if (activeUserEmail) return [];
+    return projects.slice(0, 5).map((p) => ({
+      id: p.id,
+      projectName: p.projectName,
+      region: p.region,
+      customRegion: p.customRegion,
+      category: p.category,
+      updatedAt: p.updatedAt,
+      hasAnalysis: Boolean(p.analysis),
+    }));
+  }, [activeUserEmail, projects]);
+
+  const refreshAdminLocal = useCallback(() => {
+    setAdminLoading(true);
+    setProjects(readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []));
+    setAdminLoading(false);
+  }, []);
 
   const handleAdminSyncPending = useCallback(async () => {
     if (!session?.sessionToken) return;
+    if (!gasWebhookUrl) {
+      setGlobalError(
+        language === 'en'
+          ? 'Google Sheets webhook URL is not configured.'
+          : 'URL вебхука Google Таблицы не настроен.'
+      );
+      return;
+    }
     setAdminSyncingPending(true);
     setGlobalError(null);
     try {
@@ -323,21 +375,22 @@ export default function App() {
         },
         body: JSON.stringify({ gasWebhookUrl }),
       });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        message?: string;
-        projects?: ProjectRecord[];
-      };
-      if (!res.ok || !data.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      const raw = await res.text();
+      const data =
+        contentType.includes('application/json') && raw
+          ? (JSON.parse(raw) as { ok?: boolean; message?: string; projects?: ProjectRecord[] })
+          : null;
+      if (!res.ok || !data?.ok) {
         throw new Error(
-          data.message ||
+          data?.message ||
             (language === 'en'
               ? 'Failed to sync pending leads to Google Sheet.'
               : 'Не удалось отправить ожидающие заявки в Google Таблицу.')
         );
       }
       if (Array.isArray(data.projects)) {
-        setAdminProjects(data.projects);
+        setProjects(data.projects);
       }
     } catch (err) {
       setGlobalError(
@@ -357,113 +410,14 @@ export default function App() {
     if (!email) return projects;
     const normalizedActive = email.trim().toLowerCase();
     if (normalizedActive === ADMIN_EMAIL || isAdmin) {
-      const map = new Map<string, ProjectRecord>();
-      for (const p of projects) map.set(p.id, p);
-      for (const p of adminProjects) map.set(p.id, p);
-      return Array.from(map.values()).sort(
+      return [...projects].sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
     }
     return projects
       .filter((p) => (p.email || '').trim().toLowerCase() === normalizedActive)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [projects, adminProjects, activeUserEmail, isAdmin]);
-
-  const fetchPublicPreviews = useCallback(async () => {
-    try {
-      const res = await fetch('/api/projects/preview');
-      if (!res.ok) return;
-      const data = (await res.json()) as { previews?: PublicProjectPreview[] };
-      if (Array.isArray(data.previews)) {
-        setPreviewProjects(data.previews.slice(0, 5));
-      }
-    } catch {
-      // ignore network preview errors
-    }
-  }, []);
-
-  // Загрузка последних 5 закрытых карточек предпросмотра в неавторизованном режиме
-  useEffect(() => {
-    if (activeUserEmail) return;
-    void fetchPublicPreviews();
-  }, [activeUserEmail, fetchPublicPreviews]);
-
-  // Проверка сохранённой сессии на сервере при загрузке (синхронизация между устройствами)
-  useEffect(() => {
-    if (!session?.sessionToken) return;
-    let cancelled = false;
-
-    fetch('/api/auth/session', {
-      headers: { Authorization: `Bearer ${session.sessionToken}` },
-    })
-      .then(async (res) => {
-        if (res.status === 401) {
-          if (!cancelled) {
-            setSession(null);
-            setProjects([]);
-            setActiveProjectId(null);
-          }
-          return null;
-        }
-        return res.ok ? res.json() : null;
-      })
-      .then((data) => {
-        if (cancelled || !data || !Array.isArray(data.projects)) return;
-        const verifiedEmail = String(data.email || session.email || '')
-          .trim()
-          .toLowerCase();
-        setProjects((prev) => {
-          const mergedMap = new Map<string, ProjectRecord>();
-          for (const p of prev) {
-            if (p.email.trim().toLowerCase() === verifiedEmail) {
-              mergedMap.set(p.id, p);
-            }
-          }
-          for (const sp of data.projects as ProjectRecord[]) {
-            if (sp.email.trim().toLowerCase() !== verifiedEmail) continue;
-            const local = mergedMap.get(sp.id);
-            if (!local || new Date(sp.updatedAt) >= new Date(local.updatedAt)) {
-              mergedMap.set(sp.id, sp);
-            }
-          }
-          return Array.from(mergedMap.values()).sort(
-            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-          );
-        });
-        if (verifiedEmail === ADMIN_EMAIL) {
-          void fetchAdminOverview(session.sessionToken);
-          if (!isReportRoute) {
-            setActiveTab((prev) => (prev === 'welcome' ? 'admin' : prev));
-          }
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.sessionToken, session?.email, fetchAdminOverview, isReportRoute]);
-
-  // Если открыто отдельное окно отчёта (?view=report&projectId=...), подгружаем свежий проект с сервера
-  useEffect(() => {
-    if (!isReportRoute || !routeProjectId || !session?.sessionToken) return;
-    fetch(`/api/projects/${encodeURIComponent(routeProjectId)}`, {
-      headers: { Authorization: `Bearer ${session.sessionToken}` },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.project) {
-          setProjects((prev) => {
-            const idx = prev.findIndex((p) => p.id === data.project.id);
-            if (idx === -1) return [data.project, ...prev];
-            const copy = [...prev];
-            copy[idx] = data.project;
-            return copy;
-          });
-        }
-      })
-      .catch(() => {});
-  }, [isReportRoute, routeProjectId, session?.sessionToken]);
+  }, [projects, activeUserEmail, isAdmin]);
 
   // Кросс-вкладочная синхронизация пересчитанных цифр и настроек языка/валюты между окнами
   useEffect(() => {
@@ -491,7 +445,6 @@ export default function App() {
         if (payload.fxState) setFxState(payload.fxState);
       } else if (payload?.type === 'session_cleared') {
         setSession(null);
-        setProjects([]);
         setActiveProjectId(null);
       }
     };
@@ -514,13 +467,9 @@ export default function App() {
     if (activeProjectId) {
       const fromUser = userProjects.find((p) => p.id === activeProjectId);
       if (fromUser) return fromUser;
-      if (isAdmin) {
-        const fromAdmin = adminProjects.find((p) => p.id === activeProjectId);
-        if (fromAdmin) return fromAdmin;
-      }
     }
-    return userProjects[0] ?? (isAdmin ? adminProjects[0] ?? null : null);
-  }, [activeUserEmail, userProjects, adminProjects, activeProjectId, isAdmin]);
+    return userProjects[0] ?? null;
+  }, [activeUserEmail, userProjects, activeProjectId]);
 
   // Защита от попадания на закрытые вкладки без активного подтверждённого E-mail
   useEffect(() => {
@@ -545,15 +494,6 @@ export default function App() {
           (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
       });
-      setAdminProjects((prev) => {
-        if (prev.length === 0) return prev;
-        const idx = prev.findIndex((p) => p.id === updated.id);
-        const next = idx === -1 ? [updated, ...prev] : [...prev];
-        if (idx !== -1) next[idx] = updated;
-        return next.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      });
       broadcastProjectUpdate(updated);
     },
     [broadcastProjectUpdate]
@@ -566,15 +506,12 @@ export default function App() {
   ) => {
     const normalizedEmail = project.email.trim().toLowerCase();
     setProjects((prev) => {
-      const sameEmailProjects = prev.filter(
-        (p) => p.email.trim().toLowerCase() === normalizedEmail && p.id !== project.id
-      );
-      return [project, ...sameEmailProjects].sort(
+      const others = prev.filter((p) => p.id !== project.id);
+      return [project, ...others].sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
     });
     broadcastProjectUpdate(project);
-    setPreviewProjects([]);
     setActiveProjectId(project.id);
     if (sessionToken) {
       setSession({
@@ -584,35 +521,38 @@ export default function App() {
         verifiedAt: new Date().toISOString(),
         isAdmin: normalizedEmail === ADMIN_EMAIL,
       });
-      if (normalizedEmail === ADMIN_EMAIL) {
-        void fetchAdminOverview(sessionToken);
-      }
     }
     setActiveTab('dialogue');
   };
 
-  const handleAuthenticated = (newSession: UserSession, serverProjects: ProjectRecord[]) => {
+  const handleAuthenticated = (newSession: UserSession, localProjects: ProjectRecord[]) => {
     const verifiedEmail = newSession.email.trim().toLowerCase();
-    const scopedServerProjects = serverProjects
-      .filter((p) => p.email.trim().toLowerCase() === verifiedEmail)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-
     const adminUser = verifiedEmail === ADMIN_EMAIL;
+
+    const mergedMap = new Map<string, ProjectRecord>();
+    for (const p of projects) mergedMap.set(p.id, p);
+    for (const p of localProjects) mergedMap.set(p.id, p);
+    const mergedProjects = Array.from(mergedMap.values()).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    const scopedUserProjects = adminUser
+      ? mergedProjects
+      : mergedProjects.filter((p) => p.email.trim().toLowerCase() === verifiedEmail);
+
     setSession({ ...newSession, isAdmin: adminUser });
-    setProjects(scopedServerProjects);
-    setPreviewProjects([]);
+    setProjects(mergedProjects);
 
     if (adminUser) {
-      if (scopedServerProjects.length > 0) {
-        setActiveProjectId(scopedServerProjects[0].id);
+      if (mergedProjects.length > 0) {
+        setActiveProjectId(mergedProjects[0].id);
       }
-      void fetchAdminOverview(newSession.sessionToken);
       setActiveTab('admin');
       return;
     }
 
-    if (scopedServerProjects.length > 0) {
-      setActiveProjectId(scopedServerProjects[0].id);
+    if (scopedUserProjects.length > 0) {
+      setActiveProjectId(scopedUserProjects[0].id);
       setActiveTab('projects');
     } else {
       setActiveProjectId(null);
@@ -620,31 +560,22 @@ export default function App() {
     }
   };
 
-  const resetToUnauthenticatedState = useCallback(
-    (nextTab: ActiveTab) => {
-      setSession(null);
-      setProjects([]);
-      setAdminProjects([]);
-      setAdminUsers([]);
-      setAdminGasConfigured(false);
-      setActiveProjectId(null);
-      localStorage.removeItem(LS_SESSION_KEY);
-      localStorage.removeItem(LS_PROJECTS_KEY);
-      localStorage.removeItem(LS_ACTIVE_PROJECT_KEY);
-      setActiveTab(nextTab);
-      void fetchPublicPreviews();
-      if (typeof BroadcastChannel !== 'undefined') {
-        try {
-          const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
-          channel.postMessage({ type: 'session_cleared' });
-          channel.close();
-        } catch {
-          // ignore
-        }
+  const resetToUnauthenticatedState = useCallback((nextTab: ActiveTab) => {
+    setSession(null);
+    setActiveProjectId(null);
+    localStorage.removeItem(LS_SESSION_KEY);
+    localStorage.removeItem(LS_ACTIVE_PROJECT_KEY);
+    setActiveTab(nextTab);
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+        channel.postMessage({ type: 'session_cleared' });
+        channel.close();
+      } catch {
+        // ignore
       }
-    },
-    [fetchPublicPreviews]
-  );
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     resetToUnauthenticatedState(
@@ -667,7 +598,15 @@ export default function App() {
     setAnalyzingProjectId(targetProject.id);
     setGlobalError(null);
     try {
-      const analysis = await clientAnalyzeProject(targetProject, language);
+      const { analysis, usedFallbackNoServerKey } = await analyzeProjectSmart(
+        targetProject,
+        language,
+        session?.sessionToken,
+        serverGeminiConfigured
+      );
+      if (usedFallbackNoServerKey) {
+        setServerGeminiConfigured(false);
+      }
       const updated: ProjectRecord = {
         ...targetProject,
         analysis,
@@ -678,6 +617,10 @@ export default function App() {
       setActiveProjectId(updated.id);
       setActiveTab('report');
     } catch (err) {
+      if (err instanceof MissingGeminiKeyError) {
+        setForceShowKeyInput(true);
+        setServerGeminiConfigured(false);
+      }
       setGlobalError(
         err instanceof Error
           ? err.message
@@ -698,32 +641,14 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       };
       upsertLocalProject(updated);
-
-      if (session?.sessionToken) {
-        fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.sessionToken}`,
-          },
-          body: JSON.stringify({ patch: { manualOverrides: overrides } }),
-        }).catch(() => {});
-      }
     },
-    [session?.sessionToken, upsertLocalProject]
+    [upsertLocalProject]
   );
 
   const handleDeleteProject = (projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    setAdminProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) {
       setActiveProjectId(null);
-    }
-    if (session?.sessionToken) {
-      fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${session.sessionToken}` },
-      }).catch(() => {});
     }
   };
 
@@ -774,6 +699,12 @@ export default function App() {
               onRefreshFx={() => void fetchLiveFxRates()}
               onApplyManualFx={handleApplyManualFx}
               onResetManualFx={handleResetManualFx}
+              serverGeminiConfigured={serverGeminiConfigured}
+              forceShowKeyButton={forceShowKeyInput}
+              onKeySaved={() => {
+                setForceShowKeyInput(false);
+                setGlobalError(null);
+              }}
             />
             <a
               href="/"
@@ -920,6 +851,12 @@ export default function App() {
               onRefreshFx={() => void fetchLiveFxRates()}
               onApplyManualFx={handleApplyManualFx}
               onResetManualFx={handleResetManualFx}
+              serverGeminiConfigured={serverGeminiConfigured}
+              forceShowKeyButton={forceShowKeyInput}
+              onKeySaved={() => {
+                setForceShowKeyInput(false);
+                setGlobalError(null);
+              }}
             />
 
             {activeProject?.analysis && (
@@ -1004,6 +941,7 @@ export default function App() {
             <AnalystDialogue
               project={activeProject}
               sessionToken={session?.sessionToken}
+              serverGeminiConfigured={serverGeminiConfigured}
               analyzing={analyzingProjectId === activeProject.id}
               language={language}
               displayCurrency={displayCurrency}
@@ -1017,6 +955,10 @@ export default function App() {
                 })
               }
               onOpenReportTab={() => setActiveTab('report')}
+              onMissingApiKey={() => {
+                setForceShowKeyInput(true);
+                setServerGeminiConfigured(false);
+              }}
             />
           )}
 
@@ -1045,7 +987,7 @@ export default function App() {
               syncingPending={adminSyncingPending}
               analyzingProjectId={analyzingProjectId}
               activeProjectId={activeProject?.id ?? null}
-              onRefresh={() => void fetchAdminOverview()}
+              onRefresh={refreshAdminLocal}
               onSyncPending={() => void handleAdminSyncPending()}
               onSelectProject={(id, targetTab) => {
                 setActiveProjectId(id);

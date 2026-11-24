@@ -65,8 +65,8 @@ export const TRANSLATIONS = {
     },
     welcome: {
       kicker: 'Intelligent Business Systems · Local-First Архитектура',
-      headline:
-        'Инвестиционная и проектная аналитика за минуты с полным контролем цифр и документов',
+      headlineLine1: 'Инвестиционная и проектная аналитика за минуты',
+      headlineLine2: 'с полным контролем цифр и документов',
       subtitleLine1:
         '«IPDS Терминал» превращает разрозненные заметки, таблицы и бизнес-описания в структурированную финансовую модель и карту рисков с учётом региона реализации.',
       subtitleLine2:
@@ -466,8 +466,8 @@ export const TRANSLATIONS = {
     },
     welcome: {
       kicker: 'Intelligent Business Systems · Local-First Architecture',
-      headline:
-        'Investment & Project Analytics in Minutes with Full Control over Numbers and Documents',
+      headlineLine1: 'Investment & Project Analytics in Minutes',
+      headlineLine2: 'with Full Control over Numbers and Documents',
       subtitleLine1:
         'IPDS Terminal turns scattered notes, spreadsheets, and business memos into a structured financial model and risk map tailored to your region.',
       subtitleLine2:

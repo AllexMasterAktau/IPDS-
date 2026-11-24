@@ -52,14 +52,12 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
           {t.welcome.kicker}
         </div>
 
-        <h2
-          className="text-2xl sm:text-4xl font-bold text-[#1E2022] tracking-tight leading-tight max-w-4xl"
-          style={{ textWrap: 'balance' }}
-        >
-          {t.welcome.headline}
+        <h2 className="text-2xl sm:text-4xl font-bold text-[#1E2022] tracking-tight leading-snug max-w-5xl flex flex-col gap-3 sm:gap-4 text-left">
+          <span>{t.welcome.headlineLine1}</span>
+          <span>{t.welcome.headlineLine2}</span>
         </h2>
 
-        <div className="mt-4 w-full text-left pl-4 text-sm sm:text-[15px] text-[#5C6066] leading-relaxed space-y-1">
+        <div className="mt-5 w-full text-left text-sm sm:text-[15px] text-[#5C6066] leading-relaxed space-y-1">
           <p>{t.welcome.subtitleLine1}</p>
           <p>{t.welcome.subtitleLine2}</p>
         </div>

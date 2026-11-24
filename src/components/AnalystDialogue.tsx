@@ -33,7 +33,7 @@ import {
   parseLocalFileToDigest,
   validateLocalFilesBatch,
 } from '../utils/localFileParser';
-import { clientChatWithAnalyst } from '../utils/clientGemini';
+import { chatWithAnalystSmart, MissingGeminiKeyError } from '../utils/clientGemini';
 
 interface AnalystDialogueProps {
   language: Language;
@@ -41,11 +41,13 @@ interface AnalystDialogueProps {
   fxRates: FxRateMap;
   project: ProjectRecord;
   sessionToken?: string;
+  serverGeminiConfigured?: boolean | null;
   analyzing: boolean;
   onRunAnalysis: () => void;
   onProjectUpdated: (project: ProjectRecord) => void;
   onApplySuggestedOverrides: (overrides: Partial<FinancialInputs>) => void;
   onOpenReportTab: () => void;
+  onMissingApiKey?: () => void;
 }
 
 export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
@@ -54,11 +56,13 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
   fxRates,
   project,
   sessionToken,
+  serverGeminiConfigured = null,
   analyzing,
   onRunAnalysis,
   onProjectUpdated,
   onApplySuggestedOverrides,
   onOpenReportTab,
+  onMissingApiKey,
 }) => {
   const t = getTranslations(language);
   const [message, setMessage] = useState('');
@@ -115,12 +119,14 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       : undefined;
 
     try {
-      const aiResponse = await clientChatWithAnalyst(
+      const aiResponse = await chatWithAnalystSmart(
         project,
         message.trim(),
         pendingDocs,
         currentEffectiveInputs,
-        language
+        language,
+        sessionToken,
+        serverGeminiConfigured
       );
 
       const now = new Date().toISOString();
@@ -155,6 +161,9 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       setMessage('');
       setPendingDocs([]);
     } catch (err) {
+      if (err instanceof MissingGeminiKeyError) {
+        onMissingApiKey?.();
+      }
       setError(err instanceof Error ? err.message : 'Error sending message.');
     } finally {
       setSending(false);

@@ -16,6 +16,9 @@ interface TopBarControlsProps {
   onApplyManualFx: (rates: FxRateMap) => void;
   onResetManualFx: () => void;
   variant?: 'light' | 'dark';
+  serverGeminiConfigured?: boolean | null;
+  forceShowKeyButton?: boolean;
+  onKeySaved?: () => void;
 }
 
 const CURRENCIES: CurrencyCode[] = ['RUB', 'KZT', 'USD'];
@@ -31,6 +34,9 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   onApplyManualFx,
   onResetManualFx,
   variant = 'light',
+  serverGeminiConfigured = null,
+  forceShowKeyButton = false,
+  onKeySaved,
 }) => {
   const t = getTranslations(language);
   const isDark = variant === 'dark';
@@ -43,6 +49,8 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   const [keyOpen, setKeyOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => getClientGeminiApiKey());
   const keyPopoverRef = useRef<HTMLDivElement>(null);
+  const hasLocalKey = Boolean(getClientGeminiApiKey());
+  const showKeyButton = serverGeminiConfigured === false || forceShowKeyButton || hasLocalKey;
 
   useEffect(() => {
     setRubInput(String(fxState.rates.RUB));
@@ -75,6 +83,7 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
     e.preventDefault();
     setClientGeminiApiKey(apiKeyInput);
     setKeyOpen(false);
+    onKeySaved?.();
   };
 
   const statusText =
@@ -254,77 +263,79 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
         )}
       </div>
 
-      {/* Кнопка настройки Gemini API Key */}
-      <div className="relative" ref={keyPopoverRef}>
-        <button
-          type="button"
-          onClick={() => {
-            setApiKeyInput(getClientGeminiApiKey());
-            setKeyOpen((v) => !v);
-          }}
-          title={language === 'en' ? 'Gemini API Key Settings' : 'Настройка Gemini API Key'}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer whitespace-nowrap text-xs ${
-            getClientGeminiApiKey()
-              ? 'bg-emerald-900/10 border-emerald-600/40 text-emerald-800 hover:bg-emerald-900/20'
-              : 'bg-[#1A1C1F] border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE]'
-          }`}
-        >
-          <KeyRound className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden sm:inline font-medium">
-            {getClientGeminiApiKey()
-              ? language === 'en'
-                ? 'API Key Set'
-                : 'Ключ задан'
-              : language === 'en'
-              ? 'Gemini Key'
-              : 'Ключ Gemini'}
-          </span>
-        </button>
+      {/* Кнопка настройки Gemini API Key (показывается, если серверный ключ не задан или задан локальный) */}
+      {showKeyButton && (
+        <div className="relative" ref={keyPopoverRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setApiKeyInput(getClientGeminiApiKey());
+              setKeyOpen((v) => !v);
+            }}
+            title={language === 'en' ? 'Gemini API Key Settings' : 'Настройка Gemini API Key'}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer whitespace-nowrap text-xs ${
+              hasLocalKey
+                ? 'bg-emerald-900/10 border-emerald-600/40 text-emerald-800 hover:bg-emerald-900/20'
+                : 'bg-[#1A1C1F] border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE]'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline font-medium">
+              {hasLocalKey
+                ? language === 'en'
+                  ? 'API Key Set'
+                  : 'Ключ задан'
+                : language === 'en'
+                ? 'Gemini Key'
+                : 'Ключ Gemini'}
+            </span>
+          </button>
 
-        {keyOpen && (
-          <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] text-[#1E2022] shadow-xl p-4 z-50 space-y-3.5">
-            <div className="flex items-start justify-between gap-2 border-b border-[#E5E0D5] pb-2.5">
-              <div>
-                <div className="text-xs font-bold text-[#1E2022]">
-                  {language === 'en' ? 'Gemini API Key' : 'Ключ Gemini API'}
+          {keyOpen && (
+            <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] text-[#1E2022] shadow-xl p-4 z-50 space-y-3.5">
+              <div className="flex items-start justify-between gap-2 border-b border-[#E5E0D5] pb-2.5">
+                <div>
+                  <div className="text-xs font-bold text-[#1E2022]">
+                    {language === 'en' ? 'Gemini API Key' : 'Ключ Gemini API'}
+                  </div>
+                  <div className="text-[11px] text-[#5C6066] mt-0.5">
+                    {language === 'en'
+                      ? 'Enter your API key (AIza...) for browser analysis.'
+                      : 'Введите ваш ключ (AIza...) для анализа из браузера.'}
+                  </div>
                 </div>
-                <div className="text-[11px] text-[#5C6066] mt-0.5">
-                  {language === 'en'
-                    ? 'Enter your API key (AIza...) for direct browser analysis.'
-                    : 'Введите ваш ключ (AIza...) для прямого анализа из браузера.'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setKeyOpen(false)}
-                className="p-1 rounded-md border border-[#C9C1B2] hover:border-[#8C6D3F] text-[#5C6066] hover:text-[#1E2022] hover:bg-[#EFECE4] transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveKey} className="space-y-3">
-              <div>
-                <input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs font-mono-tabular text-[#1E2022]"
-                />
-              </div>
-              <div className="flex items-center gap-2">
                 <button
-                  type="submit"
-                  className="flex-1 px-3 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] text-[#F5F3EE] font-semibold text-xs cursor-pointer transition-colors"
+                  type="button"
+                  onClick={() => setKeyOpen(false)}
+                  className="p-1 rounded-md border border-[#C9C1B2] hover:border-[#8C6D3F] text-[#5C6066] hover:text-[#1E2022] hover:bg-[#EFECE4] transition-colors cursor-pointer"
                 >
-                  {language === 'en' ? 'Save Key' : 'Сохранить ключ'}
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </form>
-          </div>
-        )}
-      </div>
+
+              <form onSubmit={handleSaveKey} className="space-y-3">
+                <div>
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs font-mono-tabular text-[#1E2022]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] text-[#F5F3EE] font-semibold text-xs cursor-pointer transition-colors"
+                  >
+                    {language === 'en' ? 'Save Key' : 'Сохранить ключ'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Переключатель языка RU / EN */}
       <div

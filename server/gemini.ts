@@ -13,11 +13,16 @@ import type {
  * API-ключ автоматически подхватывается из переменной окружения process.env.GEMINI_API_KEY
  * (настраивается в панели Settings > Secrets в Google AI Studio или в файле .env).
  */
-function getGeminiClient(): GoogleGenAI {
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+function getGeminiClient(clientApiKey?: string): GoogleGenAI {
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    clientApiKey ||
+    ''
+  ).trim();
   if (!apiKey) {
     throw new Error(
-      'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.'
+      'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio или введите ключ в браузере.'
     );
   }
   return new GoogleGenAI({
@@ -44,9 +49,10 @@ function buildDocumentsContext(documents: LocalDocumentDigest[]): string {
 
 export async function analyzeProjectWithGemini(
   project: ProjectRecord,
-  language: Language = 'ru'
+  language: Language = 'ru',
+  clientApiKey?: string
 ): Promise<ProjectAnalysis> {
-  const ai = getGeminiClient();
+  const ai = getGeminiClient(clientApiKey);
   const regionLabel =
     project.region === 'Свой вариант' && project.customRegion
       ? project.customRegion
@@ -74,7 +80,7 @@ ${buildDocumentsContext(project.documents)}
 3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
     contents: prompt,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
@@ -258,7 +264,7 @@ ${buildDocumentsContext(project.documents)}
     assumptions: parsed.assumptions ?? [],
     preLaunchSteps: parsed.preLaunchSteps ?? [],
     generatedAt: new Date().toISOString(),
-    modelUsed: 'Gemini 4 Hydrogen',
+    modelUsed: 'Gemini 3.8 Flash',
   };
 }
 
@@ -267,12 +273,13 @@ export async function chatWithAnalystGemini(
   userMessage: string,
   newDocuments: LocalDocumentDigest[],
   currentEffectiveInputs?: FinancialInputs,
-  language: Language = 'ru'
+  language: Language = 'ru',
+  clientApiKey?: string
 ): Promise<{
   reply: string;
   suggestedOverrides: Partial<FinancialInputs> | null;
 }> {
-  const ai = getGeminiClient();
+  const ai = getGeminiClient(clientApiKey);
   const regionLabel =
     project.region === 'Свой вариант' && project.customRegion
       ? project.customRegion
@@ -326,7 +333,7 @@ ${userMessage}
 Если пользователь просит пересчитать или скорректировать какие-либо финансовые параметры (инвестиции, выручку, штат, срок запуска, OPEX) на основе новых данных или сценария, заполни объект suggestedOverrides (иначе оставь applyOverrides = false).`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
     contents: prompt,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
