@@ -12,6 +12,11 @@ import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
 import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
 import { analyzeProjectSmart, MissingGeminiKeyError } from './utils/clientGemini';
+import {
+  deduplicateProjectPreviews,
+  deduplicateProjects,
+  upsertUniqueProject,
+} from './utils/projectDedup';
 import type {
   AdminUserSummary,
   CurrencyCode,
@@ -49,15 +54,26 @@ export default function App() {
   const isReportRoute = urlParams.get('view') === 'report';
   const routeProjectId = urlParams.get('projectId');
 
-  const [projects, setProjects] = useState<ProjectRecord[]>(() =>
-    readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, [])
-  );
+  const [projects, setProjects] = useState<ProjectRecord[]>(() => {
+    const raw = readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []);
+    const deduped = deduplicateProjects(raw);
+    if (deduped.length !== raw.length) {
+      try {
+        localStorage.setItem(LS_PROJECTS_KEY, JSON.stringify(deduped));
+      } catch {
+        // ignore storage errors
+      }
+    }
+    return deduped;
+  });
   const [session, setSession] = useState<UserSession | null>(() => {
     const stored = readJsonFromStorage<UserSession | null>(LS_SESSION_KEY, null);
     if (stored && stored.email?.trim() && stored.sessionToken?.trim()) {
       return stored;
     }
-    const savedProjects = readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []);
+    const savedProjects = deduplicateProjects(
+      readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, [])
+    );
     if (savedProjects.length > 0) {
       const latest = savedProjects[0];
       return {
@@ -118,7 +134,9 @@ export default function App() {
     if (stored === 'RUB' || stored === 'KZT' || stored === 'USD') {
       return stored;
     }
-    const savedProjects = readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []);
+    const savedProjects = deduplicateProjects(
+      readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, [])
+    );
     const savedActiveId = routeProjectId || localStorage.getItem(LS_ACTIVE_PROJECT_KEY);
     const target =
       savedProjects.find((p) => p.id === savedActiveId) ?? savedProjects[0];
@@ -299,16 +317,13 @@ export default function App() {
 
 
   const adminProjects = useMemo(
-    () =>
-      [...projects].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      ),
+    () => deduplicateProjects(projects),
     [projects]
   );
 
   const adminUsers = useMemo<AdminUserSummary[]>(() => {
     const map = new Map<string, AdminUserSummary>();
-    for (const p of projects) {
+    for (const p of adminProjects) {
       const email = (p.email || '').trim().toLowerCase();
       if (!email) continue;
       const existing = map.get(email);
@@ -328,11 +343,11 @@ export default function App() {
     return Array.from(map.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [projects]);
+  }, [adminProjects]);
 
   const previewProjects = useMemo<PublicProjectPreview[]>(() => {
     if (activeUserEmail) return [];
-    return projects.slice(0, 5).map((p) => ({
+    const mapped = deduplicateProjects(projects).map((p) => ({
       id: p.id,
       projectName: p.projectName,
       region: p.region,
@@ -341,11 +356,12 @@ export default function App() {
       updatedAt: p.updatedAt,
       hasAnalysis: Boolean(p.analysis),
     }));
+    return deduplicateProjectPreviews(mapped).slice(0, 5);
   }, [activeUserEmail, projects]);
 
   const refreshAdminLocal = useCallback(() => {
     setAdminLoading(true);
-    setProjects(readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, []));
+    setProjects(deduplicateProjects(readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, [])));
     setAdminLoading(false);
   }, []);
 
@@ -403,17 +419,16 @@ export default function App() {
   }, [gasWebhookUrl, language, projects, session?.sessionToken]);
 
   const userProjects = useMemo(() => {
-    const email = activeUserEmail || (projects[0]?.email ?? null);
-    if (!email) return projects;
+    const uniqueAll = deduplicateProjects(projects);
+    const email = activeUserEmail || (uniqueAll[0]?.email ?? null);
+    if (!email) return uniqueAll;
     const normalizedActive = email.trim().toLowerCase();
     if (normalizedActive === ADMIN_EMAIL || isAdmin) {
-      return [...projects].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
+      return uniqueAll;
     }
-    return projects
-      .filter((p) => (p.email || '').trim().toLowerCase() === normalizedActive)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return deduplicateProjects(
+      uniqueAll.filter((p) => (p.email || '').trim().toLowerCase() === normalizedActive)
+    );
   }, [projects, activeUserEmail, isAdmin]);
 
   // Кросс-вкладочная синхронизация пересчитанных цифр и настроек языка/валюты между окнами
@@ -429,13 +444,7 @@ export default function App() {
         fxState?: FxRatesState;
       };
       if (payload?.type === 'project_updated' && payload.project) {
-        setProjects((prev) => {
-          const idx = prev.findIndex((p) => p.id === payload.project!.id);
-          if (idx === -1) return [payload.project!, ...prev];
-          const next = [...prev];
-          next[idx] = payload.project!;
-          return next;
-        });
+        setProjects((prev) => upsertUniqueProject(prev, payload.project!));
       } else if (payload?.type === 'prefs_updated') {
         if (payload.language) setLanguage(payload.language);
         if (payload.displayCurrency) setDisplayCurrency(payload.displayCurrency);
@@ -483,14 +492,7 @@ export default function App() {
 
   const upsertLocalProject = useCallback(
     (updated: ProjectRecord) => {
-      setProjects((prev) => {
-        const idx = prev.findIndex((p) => p.id === updated.id);
-        const next = idx === -1 ? [updated, ...prev] : [...prev];
-        if (idx !== -1) next[idx] = updated;
-        return next.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      });
+      setProjects((prev) => upsertUniqueProject(prev, updated));
       broadcastProjectUpdate(updated);
     },
     [broadcastProjectUpdate]
@@ -502,12 +504,7 @@ export default function App() {
     accessKeyHint?: string
   ) => {
     const normalizedEmail = project.email.trim().toLowerCase();
-    setProjects((prev) => {
-      const others = prev.filter((p) => p.id !== project.id);
-      return [project, ...others].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-    });
+    setProjects((prev) => upsertUniqueProject(prev, project));
     broadcastProjectUpdate(project);
     setActiveProjectId(project.id);
     if (sessionToken) {
@@ -526,12 +523,7 @@ export default function App() {
     const verifiedEmail = newSession.email.trim().toLowerCase();
     const adminUser = verifiedEmail === ADMIN_EMAIL;
 
-    const mergedMap = new Map<string, ProjectRecord>();
-    for (const p of projects) mergedMap.set(p.id, p);
-    for (const p of localProjects) mergedMap.set(p.id, p);
-    const mergedProjects = Array.from(mergedMap.values()).sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
+    const mergedProjects = deduplicateProjects([...projects, ...localProjects]);
 
     const scopedUserProjects = adminUser
       ? mergedProjects

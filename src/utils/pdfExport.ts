@@ -1,14 +1,75 @@
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
+interface SaveFilePickerWritable {
+  write: (data: Blob | BufferSource | string) => Promise<void>;
+  close: () => Promise<void>;
+  abort?: () => Promise<void>;
+}
+
+interface SaveFilePickerHandle {
+  createWritable: () => Promise<SaveFilePickerWritable>;
+}
+
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: Array<{
+    description?: string;
+    accept: Record<string, string[]>;
+  }>;
+}
+
+type ShowSaveFilePickerFn = (
+  options?: SaveFilePickerOptions
+) => Promise<SaveFilePickerHandle>;
+
+export function buildPdfFileName(projectName: string): string {
+  const safeSlug =
+    projectName
+      .trim()
+      .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 48) || 'IPDS_Project';
+
+  return `IPDS_Report_${safeSlug}.pdf`;
+}
+
 /**
  * Экспорт чистого многостраничного PDF-документа с полной поддержкой кириллицы,
  * логотипом IBS, обоими контурами анализа, SVG-инфографикой и пересчитанными цифрами.
+ * По возможности предлагает выбрать путь и имя файла через showSaveFilePicker.
  */
 export async function exportReportElementToPdf(
   element: HTMLElement,
   projectName: string
 ): Promise<void> {
+  const fileName = buildPdfFileName(projectName);
+
+  // Открываем системное окно выбора пути сразу в рамках пользовательского клика
+  let fileHandle: SaveFilePickerHandle | null = null;
+  if (typeof window !== 'undefined') {
+    const pickerFn = (
+      window as Window & { showSaveFilePicker?: ShowSaveFilePickerFn }
+    ).showSaveFilePicker;
+    if (typeof pickerFn === 'function') {
+      try {
+        fileHandle = await pickerFn({
+          suggestedName: fileName,
+          types: [
+            {
+              description: 'PDF Document',
+              accept: { 'application/pdf': ['.pdf'] },
+            },
+          ],
+        });
+      } catch {
+        // Пользователь отменил выбор или окружение (напр. iframe) ограничило API —
+        // выполняем запасное скачивание PDF без ошибок и зависаний.
+        fileHandle = null;
+      }
+    }
+  }
+
   // Гарантируем, что шрифты полностью загружены до рендера в PNG
   if (document.fonts && document.fonts.ready) {
     await document.fonts.ready;
@@ -85,11 +146,22 @@ export async function exportReportElementToPdf(
     pageIndex += 1;
   }
 
-  const safeSlug = projectName
-    .trim()
-    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 48) || 'IPDS_Project';
+  if (fileHandle) {
+    let writable: SaveFilePickerWritable | null = null;
+    try {
+      const pdfBlob = pdf.output('blob');
+      writable = await fileHandle.createWritable();
+      await writable.write(pdfBlob);
+      await writable.close();
+      return;
+    } catch {
+      try {
+        await writable?.abort?.();
+      } catch {
+        // ignore abort cleanup errors
+      }
+    }
+  }
 
-  pdf.save(`IPDS_Report_${safeSlug}.pdf`);
+  pdf.save(fileName);
 }

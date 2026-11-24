@@ -26,6 +26,10 @@ import {
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
+import {
+  deduplicateProjectPreviews,
+  deduplicateProjects,
+} from '../utils/projectDedup';
 
 interface ProjectsListViewProps {
   language: Language;
@@ -66,9 +70,7 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
 
   // Режим до подтверждения входа по E-mail: только последние 5 закрытых карточек предпросмотра
   if (!isAuthenticated || !activeUserEmail) {
-    const latestPreviews = [...previewProjects]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 5);
+    const latestPreviews = deduplicateProjectPreviews(previewProjects).slice(0, 5);
 
     const filteredPreviews = latestPreviews.filter((p) => {
       const q = query.trim().toLowerCase();
@@ -204,13 +206,16 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
     );
   }
 
-  // Авторизованный режим: отображаем ТОЛЬКО проекты подтверждённого activeUserEmail
+  // Авторизованный режим: отображаем ТОЛЬКО уникальные проекты подтверждённого activeUserEmail
   const normalizedActiveEmail = (activeUserEmail || projects[0]?.email || '').trim().toLowerCase();
-  let scopedProjects = projects.filter(
-    (p) => normalizedActiveEmail === 'allmasters13@gmail.com' || (p.email || '').trim().toLowerCase() === normalizedActiveEmail
+  const uniqueProjects = deduplicateProjects(projects);
+  let scopedProjects = uniqueProjects.filter(
+    (p) =>
+      normalizedActiveEmail === 'allmasters13@gmail.com' ||
+      (p.email || '').trim().toLowerCase() === normalizedActiveEmail
   );
-  if (scopedProjects.length === 0 && projects.length > 0) {
-    scopedProjects = projects;
+  if (scopedProjects.length === 0 && uniqueProjects.length > 0) {
+    scopedProjects = uniqueProjects;
   }
 
   const filtered = scopedProjects.filter((p) => {

@@ -31,6 +31,7 @@ import {
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
+import { deduplicateProjects } from '../utils/projectDedup';
 
 interface AdminPanelViewProps {
   language: Language;
@@ -79,6 +80,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const uniqueProjects = useMemo(() => deduplicateProjects(projects), [projects]);
+
   const analytics = useMemo(() => {
     let analyzedCount = 0;
     let draftCount = 0;
@@ -95,7 +98,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
     const regionCounts = new Map<string, number>();
     const categoryCounts = new Map<string, number>();
 
-    for (const proj of projects) {
+    for (const proj of uniqueProjects) {
       const em = proj.email.trim().toLowerCase();
       if (em) uniqueEmails.add(em);
 
@@ -139,7 +142,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       }
     }
 
-    const totalProjects = projects.length;
+    const totalProjects = uniqueProjects.length;
     const regionBreakdown = Array.from(regionCounts.entries())
       .map(([label, count]) => ({
         label,
@@ -175,19 +178,19 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       regionBreakdown,
       categoryBreakdown,
     };
-  }, [projects, users.length, displayCurrency, fxRates, language, t.common.monthPrefix]);
+  }, [uniqueProjects, users.length, displayCurrency, fxRates, language, t.common.monthPrefix]);
 
   const availableRegions = useMemo(() => {
     const set = new Set<string>();
-    for (const p of projects) {
+    for (const p of uniqueProjects) {
       set.add(getRegionDisplayLabel(p.region, p.customRegion, language));
     }
     return Array.from(set).sort();
-  }, [projects, language]);
+  }, [uniqueProjects, language]);
 
   const filteredProjects = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return projects.filter((proj) => {
+    return uniqueProjects.filter((proj) => {
       const regLabel = getRegionDisplayLabel(proj.region, proj.customRegion, language);
       if (regionFilter !== 'all' && regLabel !== regionFilter) return false;
       if (statusFilter === 'ready' && !proj.analysis) return false;
@@ -202,7 +205,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
         regLabel.toLowerCase().includes(q)
       );
     });
-  }, [projects, query, regionFilter, statusFilter, language]);
+  }, [uniqueProjects, query, regionFilter, statusFilter, language]);
 
   const contactRows = useMemo(() => {
     const map = new Map<
@@ -619,7 +622,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       {/* Содержимое вкладок: Все проекты / Контакты */}
       {filteredProjects.length === 0 ? (
         <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-10 text-center text-sm text-[#5C6066]">
-          {projects.length === 0 ? t.admin.emptyAll : t.admin.emptyFiltered}
+          {uniqueProjects.length === 0 ? t.admin.emptyAll : t.admin.emptyFiltered}
         </div>
       ) : subTab === 'projects' ? (
         <div className="space-y-3">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   FileText,
   FolderKanban,
@@ -12,6 +12,7 @@ import {
 import type { Language, ProjectRecord } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
 import { getRegionDisplayLabel } from '../utils/financialModel';
+import { deduplicateProjects } from '../utils/projectDedup';
 
 export type ActiveTab = 'welcome' | 'projects' | 'dialogue' | 'report' | 'admin';
 
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const t = getTranslations(language);
   const hasVerifiedAccount = isAuthenticated === true && Boolean(activeUserEmail);
+  const uniqueProjects = useMemo(() => deduplicateProjects(projects), [projects]);
 
   const navItems: {
     id: ActiveTab;
@@ -67,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'projects',
       label: t.sidebar.navProjects,
       icon: <FolderKanban className="w-4 h-4 shrink-0" />,
-      count: hasVerifiedAccount ? projects.length : previewCount,
+      count: hasVerifiedAccount ? uniqueProjects.length : previewCount,
     },
     {
       id: 'dialogue',
@@ -175,13 +177,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Быстрый переключатель недавних проектов (только после входа по E-mail) */}
-      {hasVerifiedAccount && projects.length > 0 && (
+      {hasVerifiedAccount && uniqueProjects.length > 0 && (
         <div className="px-4 py-3 border-t border-[#2A2D32] flex-1 overflow-y-auto min-h-0">
           <div className="text-xs font-medium text-[#9A9EA6] mb-2">
             {t.sidebar.activeProjects}
           </div>
           <div className="space-y-1">
-            {projects.slice(0, 8).map((proj) => {
+            {uniqueProjects.slice(0, 8).map((proj) => {
               const selected = activeProject?.id === proj.id;
               return (
                 <button
@@ -209,7 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
 
-      {(!hasVerifiedAccount || projects.length === 0) && <div className="flex-1" />}
+      {(!hasVerifiedAccount || uniqueProjects.length === 0) && <div className="flex-1" />}
 
       {/* Доступ по E-mail и настройки интеграции */}
       <div className="px-4 py-3 border-t border-[#2A2D32] space-y-2 bg-[#1B1D20]">

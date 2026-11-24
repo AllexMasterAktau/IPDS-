@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Check, Copy, FileText, Lock, Trash2, Upload, X } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Check, Copy, FileText, Info, Lock, Trash2, Upload, X } from 'lucide-react';
 import type { Language, LocalDocumentDigest, ProjectRecord, RegionPreset } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
 import { getRegionDefaults } from '../utils/financialModel';
@@ -9,6 +9,12 @@ import {
   parseLocalFileToDigest,
   validateLocalFilesBatch,
 } from '../utils/localFileParser';
+import {
+  deduplicateProjects,
+  findProjectByNormalizedName,
+  mergeProjectUpdate,
+  normalizeProjectName,
+} from '../utils/projectDedup';
 
 interface CreateProjectModalProps {
   language: Language;
@@ -55,6 +61,18 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [copiedKey, setCopiedKey] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const existingDuplicate = useMemo(() => {
+    if (!isOpen || !projectName.trim()) return null;
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem('ipds_projects_v1') || '[]'
+      ) as ProjectRecord[];
+      return findProjectByNormalizedName(stored, projectName, email);
+    } catch {
+      return null;
+    }
+  }, [isOpen, projectName, email]);
 
   if (!isOpen) return null;
 
@@ -110,26 +128,59 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setSubmitting(true);
     const regionMeta = getRegionDefaults(region, customRegion, language);
     const now = new Date().toISOString();
+    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedName = projectName.trim();
 
-    const newProject: ProjectRecord = {
-      id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      fullName: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      projectName: projectName.trim(),
-      region,
-      customRegion: region === 'Свой вариант' ? customRegion.trim() : undefined,
-      category: category.trim() || undefined,
-      comment: comment.trim() || undefined,
-      currencyCode: regionMeta.currencyCode,
-      currencySymbol: regionMeta.currencySymbol,
-      documents,
-      analysis: null,
-      manualOverrides: {},
-      dialogue: [],
-      leadSyncStatus: 'synced',
-      createdAt: now,
-      updatedAt: now,
-    };
+    let existingList: ProjectRecord[] = [];
+    try {
+      const raw = JSON.parse(
+        localStorage.getItem('ipds_projects_v1') || '[]'
+      ) as ProjectRecord[];
+      existingList = deduplicateProjects(raw);
+    } catch {
+      existingList = [];
+    }
+
+    const matchedExisting = findProjectByNormalizedName(
+      existingList,
+      trimmedName,
+      normalizedEmail
+    );
+
+    const savedProject: ProjectRecord = matchedExisting
+      ? mergeProjectUpdate(matchedExisting, {
+          fullName: fullName.trim(),
+          email: normalizedEmail,
+          projectName: trimmedName,
+          region,
+          customRegion: region === 'Свой вариант' ? customRegion.trim() : undefined,
+          category: category.trim() || undefined,
+          comment: comment.trim() || undefined,
+          currencyCode: regionMeta.currencyCode,
+          currencySymbol: regionMeta.currencySymbol,
+          documents,
+          leadSyncStatus: 'synced',
+          updatedAt: now,
+        })
+      : {
+          id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          fullName: fullName.trim(),
+          email: normalizedEmail,
+          projectName: trimmedName,
+          region,
+          customRegion: region === 'Свой вариант' ? customRegion.trim() : undefined,
+          category: category.trim() || undefined,
+          comment: comment.trim() || undefined,
+          currencyCode: regionMeta.currencyCode,
+          currencySymbol: regionMeta.currencySymbol,
+          documents,
+          analysis: null,
+          manualOverrides: {},
+          dialogue: [],
+          leadSyncStatus: 'synced',
+          createdAt: now,
+          updatedAt: now,
+        };
 
     const sessionToken = `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const newlyGeneratedKey =
@@ -139,18 +190,25 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       Math.random().toString(36).slice(2, 6).toUpperCase();
 
     try {
-      const existing = JSON.parse(
-        localStorage.getItem('ipds_projects_v1') || '[]'
-      ) as ProjectRecord[];
-      const updatedList = [newProject, ...existing.filter((p) => p.id !== newProject.id)];
+      const targetNorm = normalizeProjectName(savedProject.projectName);
+      const updatedList = deduplicateProjects([
+        savedProject,
+        ...existingList.filter(
+          (p) =>
+            p.id !== savedProject.id &&
+            normalizeProjectName(p.projectName) !== targetNorm
+        ),
+      ]);
       localStorage.setItem('ipds_projects_v1', JSON.stringify(updatedList));
-    } catch {}
+    } catch {
+      // ignore storage errors
+    }
 
     setSubmitting(false);
     onCreated(
-      newProject,
+      savedProject,
       sessionToken,
-      'KEY-' + newProject.email.slice(0, 4).toUpperCase(),
+      'KEY-' + savedProject.email.slice(0, 4).toUpperCase(),
       newlyGeneratedKey
     );
     resetAndClose();
@@ -299,6 +357,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 placeholder={t.createModal.placeholderProjectName}
                 className="w-full px-3.5 py-2.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
               />
+              {existingDuplicate && (
+                <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-[#EFECE4] border border-[#D8C7A5] px-3 py-2 text-[11px] text-[#5C4620] leading-snug">
+                  <Info className="w-3.5 h-3.5 text-[#9A6E2E] shrink-0 mt-0.5" />
+                  <span>
+                    {language === 'en'
+                      ? `Project «${existingDuplicate.projectName}» already exists — saving will safely update the existing card without creating a duplicate.`
+                      : `Проект «${existingDuplicate.projectName}» уже существует — при сохранении существующая карточка будет безопасно обновлена без создания дубликата.`}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -459,7 +527,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   disabled={submitting || parsingFiles}
                   className="px-5 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer"
                 >
-                  {submitting ? t.createModal.saving : t.createModal.submit}
+                  {submitting
+                    ? t.createModal.saving
+                    : existingDuplicate
+                    ? language === 'en'
+                      ? 'Update Project'
+                      : 'Обновить проект'
+                    : t.createModal.submit}
                 </button>
               </div>
             </div>

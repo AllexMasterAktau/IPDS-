@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { KeyRound, Mail, ShieldCheck, X } from 'lucide-react';
+import { ShieldCheck, X } from 'lucide-react';
 import type { Language, ProjectRecord, UserSession } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
+import { deduplicateProjects } from '../utils/projectDedup';
 
 interface EmailAuthModalProps {
   language: Language;
@@ -11,10 +12,18 @@ interface EmailAuthModalProps {
   onAuthenticated: (session: UserSession, projects: ProjectRecord[]) => void;
 }
 
+function readDeduplicatedLocalProjects(): ProjectRecord[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('ipds_projects_v1') || '[]') as ProjectRecord[];
+    return deduplicateProjects(parsed);
+  } catch {
+    return [];
+  }
+}
+
 export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
   language,
   isOpen,
-  gasWebhookUrl,
   onClose,
   onAuthenticated,
 }) => {
@@ -37,11 +46,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
       isAdmin,
     };
 
-    const existingProjects: ProjectRecord[] = JSON.parse(
-      localStorage.getItem('ipds_projects_v1') || '[]'
-    );
-
-    onAuthenticated(session, existingProjects);
+    onAuthenticated(session, readDeduplicatedLocalProjects());
     setEmail('');
     onClose();
   };
@@ -55,11 +60,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
       isAdmin: false,
     };
 
-    const existingProjects: ProjectRecord[] = JSON.parse(
-      localStorage.getItem('ipds_projects_v1') || '[]'
-    );
-
-    onAuthenticated(session, existingProjects);
+    onAuthenticated(session, readDeduplicatedLocalProjects());
     setEmail('');
     onClose();
   };
@@ -73,11 +74,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
       isAdmin: true,
     };
 
-    const existingProjects: ProjectRecord[] = JSON.parse(
-      localStorage.getItem('ipds_projects_v1') || '[]'
-    );
-
-    onAuthenticated(session, existingProjects);
+    onAuthenticated(session, readDeduplicatedLocalProjects());
     setEmail('');
     onClose();
   };
