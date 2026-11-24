@@ -211,39 +211,39 @@ export const ReportView: React.FC<ReportViewProps> = ({
       : '';
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto py-6 px-4 sm:px-8 lg:px-10 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-5">
       {/* Верхняя панель действий отчёта */}
-      <div className="no-print flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#E5E0D5]">
+      <div className="no-print flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#E5E0D5]">
         <div>
           {isStandaloneWindow && (
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs text-[#9A6E2E] hover:text-[#7B551F] font-medium mb-2"
+              className="inline-flex items-center gap-1.5 text-xs text-[#9A6E2E] hover:text-[#7B551F] font-medium mb-1.5"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>{t.report.backToTerminal}</span>
             </a>
           )}
-          <div className="text-xs text-[#5C6066]">
+          <div className="text-xs text-[#5C6066] leading-snug">
             {regionLabel} · {displayCurrency} ({displaySymbol}) · {t.report.initiator}:{' '}
             {project.fullName}
             {hasOverrides ? ` · ${t.report.manuallyRecalculated}` : ''}
             {fxNoteText}
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#1E2022] mt-0.5">
+          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug mt-0.5">
             {project.projectName}
           </h2>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {!isStandaloneWindow && (
             <a
               href={reportTabUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
             >
-              <ExternalLink className="w-4 h-4 shrink-0 text-[#F5F3EE]" />
+              <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
               <span>{t.report.openNewWindow}</span>
             </a>
           )}
@@ -251,9 +251,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
           >
-            <Printer className="w-4 h-4 shrink-0 text-[#F5F3EE]" />
+            <Printer className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
             <span>{t.report.print}</span>
           </button>
 
@@ -261,9 +261,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
             type="button"
             disabled={exportingPdf}
             onClick={() => void handleDownloadPdf()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
           >
-            <Download className="w-4 h-4 shrink-0 text-[#F5F3EE]" />
+            <Download className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
             <span>
               {exportingPdf ? t.report.generatingPdf : t.report.downloadPdf}
             </span>
@@ -272,14 +272,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
       </div>
 
       {pdfError && (
-        <div className="no-print rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-xs text-rose-800">
+        <div className="no-print rounded-lg bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs text-rose-800">
           {pdfError}
         </div>
       )}
 
       {/* 6 ключевых показателей проекта */}
-      <section className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+      <section className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiCost}</div>
           <div className="mt-1.5 text-xl font-bold text-[#1E2022] font-mono-tabular">
             {formatMoney(metrics.projectCost, displaySymbol, language)}
@@ -289,57 +289,57 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiInvestments}</div>
-          <div className="mt-1.5 text-xl font-bold text-[#9A6E2E] font-mono-tabular">
+          <div className="mt-1 text-lg sm:text-xl font-bold text-[#9A6E2E] font-mono-tabular">
             {formatMoney(metrics.investmentAmount, displaySymbol, language)}
           </div>
-          <div className="mt-1 text-[11px] text-[#7A7E85]">
+          <div className="mt-0.5 text-[11px] text-[#7A7E85] leading-snug">
             {t.report.kpiInvestmentsSub}
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiLaunch}</div>
-          <div className="mt-1.5 text-xl font-bold text-[#1E2022] font-mono-tabular">
+          <div className="mt-1 text-lg sm:text-xl font-bold text-[#1E2022] font-mono-tabular">
             {metrics.launchMonths} {t.common.monthsShort}
           </div>
-          <div className="mt-1 text-[11px] text-[#7A7E85]">
+          <div className="mt-0.5 text-[11px] text-[#7A7E85] leading-snug">
             {t.report.kpiLaunchSub}
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiStaff}</div>
-          <div className="mt-1.5 text-xl font-bold text-[#1E2022] font-mono-tabular">
+          <div className="mt-1 text-lg sm:text-xl font-bold text-[#1E2022] font-mono-tabular">
             {metrics.headcount} {t.common.staffShort}
           </div>
-          <div className="mt-1 text-[11px] text-[#7A7E85]">
+          <div className="mt-0.5 text-[11px] text-[#7A7E85] leading-snug">
             {t.report.kpiStaffSub}{' '}
             {formatCompactMoney(metrics.monthlyOpex, displaySymbol, language)}/
             {t.common.monthsShort}
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiRevenue}</div>
-          <div className="mt-1.5 text-xl font-bold text-[#1E2022] font-mono-tabular">
+          <div className="mt-1 text-lg sm:text-xl font-bold text-[#1E2022] font-mono-tabular">
             {formatMoney(metrics.monthlyRevenue, displaySymbol, language)}
           </div>
-          <div className="mt-1 text-[11px] text-[#7A7E85]">
+          <div className="mt-0.5 text-[11px] text-[#7A7E85] leading-snug">
             {t.report.kpiRevenueSub}{' '}
             {formatCompactMoney(metrics.annualRevenue, displaySymbol, language)}
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4">
           <div className="text-xs text-[#5C6066]">{t.report.kpiPayback}</div>
-          <div className="mt-1.5 text-xl font-bold text-emerald-700 font-mono-tabular">
+          <div className="mt-1 text-lg sm:text-xl font-bold text-emerald-700 font-mono-tabular">
             {metrics.paybackMonths
               ? `${metrics.paybackMonths} ${t.common.monthsShort}`
               : t.common.moreThan60Months}
           </div>
-          <div className="mt-1 text-[11px] text-[#7A7E85]">
+          <div className="mt-0.5 text-[11px] text-[#7A7E85] leading-snug">
             {t.report.kpiPaybackSub
               .replace('{margin}', String(metrics.ebitdaMarginPct))
               .replace('{roi}', String(metrics.roiAnnualPct))}
@@ -348,15 +348,15 @@ export const ReportView: React.FC<ReportViewProps> = ({
       </section>
 
       {/* Интерактивный пересчёт показателей */}
-      <section className="no-print rounded-xl bg-[#FFFFFF] border border-[#D8C7A5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-5 sm:p-6 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="no-print rounded-xl bg-[#FFFFFF] border border-[#D8C7A5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-4 sm:p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-[#B88B4A] shrink-0" />
             <div>
-              <h3 className="text-sm font-semibold text-[#1E2022]">
+              <h3 className="text-sm font-semibold text-[#1E2022] leading-snug">
                 {t.report.recalcTitle}
               </h3>
-              <p className="text-xs text-[#5C6066]">
+              <p className="text-xs text-[#5C6066] leading-snug">
                 {t.report.recalcDesc}
               </p>
             </div>
@@ -448,9 +448,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
       </section>
 
       {/* КОНТУР 1: Цифры и экономика */}
-      <section className="no-print space-y-5">
-        <div className="flex items-baseline justify-between border-b border-[#E5E0D5] pb-2">
-          <h3 className="text-lg font-bold text-[#1E2022]">
+      <section className="no-print space-y-3.5">
+        <div className="flex items-baseline justify-between border-b border-[#E5E0D5] pb-1.5">
+          <h3 className="text-base sm:text-lg font-bold text-[#1E2022]">
             {t.report.contour1Title}
           </h3>
           <span className="text-xs text-[#5C6066]">
@@ -458,14 +458,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </span>
         </div>
 
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-6 space-y-3">
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-2">
           <div className="text-xs font-semibold text-[#9A6E2E]">
             {t.report.execSummaryTitle}
           </div>
-          <p className="text-sm text-[#1E2022] leading-relaxed">
+          <p className="text-xs sm:text-[13px] text-[#1E2022] leading-snug">
             {analysis.executiveSummary}
           </p>
-          <p className="text-xs text-[#5C6066] leading-relaxed pt-2 border-t border-[#E5E0D5]">
+          <p className="text-xs text-[#5C6066] leading-snug pt-2 border-t border-[#E5E0D5]">
             {analysis.unitEconomicsSummary}
           </p>
         </div>
@@ -478,10 +478,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
           theme="light"
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Таблица структуры инвестиций */}
           <div className="lg:col-span-7 rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#E5E0D5]">
+            <div className="px-4 py-2.5 border-b border-[#E5E0D5]">
               <h4 className="text-sm font-semibold text-[#1E2022]">
                 {t.report.costTableTitle}
               </h4>
@@ -490,22 +490,22 @@ export const ReportView: React.FC<ReportViewProps> = ({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-[#E5E0D5] text-[#5C6066]">
-                    <th className="py-2.5 px-4 font-medium">{t.report.colCategory}</th>
-                    <th className="py-2.5 px-4 font-medium text-right">{t.report.colAmount}</th>
-                    <th className="py-2.5 px-4 font-medium text-right">{t.report.colShare}</th>
+                    <th className="py-2 px-3.5 font-medium">{t.report.colCategory}</th>
+                    <th className="py-2 px-3.5 font-medium text-right">{t.report.colAmount}</th>
+                    <th className="py-2 px-3.5 font-medium text-right">{t.report.colShare}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EDE8DC]">
                   {convertedCostStructure.map((item) => (
                     <tr key={item.category} className="hover:bg-[#F5F3EE]/70">
-                      <td className="py-3 px-4">
+                      <td className="py-2 px-3.5 leading-snug">
                         <div className="font-medium text-[#1E2022]">{item.category}</div>
                         <div className="text-[11px] text-[#5C6066] mt-0.5">{item.note}</div>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono-tabular text-[#1E2022] whitespace-nowrap">
+                      <td className="py-2 px-3.5 text-right font-mono-tabular text-[#1E2022] whitespace-nowrap">
                         {formatMoney(item.amount, displaySymbol, language)}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono-tabular text-[#9A6E2E] font-semibold whitespace-nowrap">
+                      <td className="py-2 px-3.5 text-right font-mono-tabular text-[#9A6E2E] font-semibold whitespace-nowrap">
                         {item.sharePct}%
                       </td>
                     </tr>
@@ -516,14 +516,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
 
           {/* Драйверы выручки */}
-          <div className="lg:col-span-5 rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5 space-y-3">
+          <div className="lg:col-span-5 rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
             <h4 className="text-sm font-semibold text-[#1E2022]">
               {t.report.driversTitle}
             </h4>
-            <ul className="space-y-2.5">
+            <ul className="space-y-1.5">
               {analysis.revenueDrivers.map((driver, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-xs text-[#3A3D42] leading-relaxed">
-                  <CheckCircle2 className="w-4 h-4 text-[#B88B4A] shrink-0 mt-0.5" />
+                <li key={i} className="flex items-start gap-2 text-xs text-[#3A3D42] leading-snug">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#B88B4A] shrink-0 mt-0.5" />
                   <span>{driver}</span>
                 </li>
               ))}
@@ -533,18 +533,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
       </section>
 
       {/* КОНТУР 2: Риски и ограничения */}
-      <section className="no-print space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E0D5] pb-2">
-          <h3 className="text-lg font-bold text-[#1E2022]">
+      <section className="no-print space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#E5E0D5] pb-1.5">
+          <h3 className="text-base sm:text-lg font-bold text-[#1E2022]">
             {t.report.contour2Title}
           </h3>
-          <div className="flex flex-wrap items-center gap-1 p-1 rounded-lg bg-[#EAE5DB] border border-[#C9C1B2]">
+          <div className="flex flex-wrap items-center gap-1 p-0.5 rounded-lg bg-[#EAE5DB] border border-[#C9C1B2]">
             {RISK_DIMENSION_IDS.map((dimId) => (
               <button
                 key={dimId}
                 type="button"
                 onClick={() => setRiskFilter(dimId)}
-                className={`px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap border ${
+                className={`px-2 py-1 rounded-md text-xs transition-colors cursor-pointer whitespace-nowrap border ${
                   riskFilter === dimId
                     ? 'bg-[#1A1C1F] border-white/[0.26] hover:border-white/[0.38] text-[#F5F3EE] font-semibold'
                     : 'border-transparent hover:border-[#8C8476]/50 text-[#5C6066] hover:text-[#1E2022]'
@@ -556,13 +556,13 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredRisks.map((risk) => {
             const sev = getSeverityMeta(risk.severity, language, true);
             return (
               <div
                 key={risk.id}
-                className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5 space-y-2.5"
+                className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="text-[#5C6066] font-medium">{risk.dimensionLabel}</span>
@@ -571,9 +571,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
                     <span>{sev.label}</span>
                   </span>
                 </div>
-                <h4 className="text-sm font-semibold text-[#1E2022]">{risk.title}</h4>
-                <p className="text-xs text-[#5C6066] leading-relaxed">{risk.description}</p>
-                <div className="pt-2 border-t border-[#E5E0D5] text-xs">
+                <h4 className="text-sm font-semibold text-[#1E2022] leading-snug">{risk.title}</h4>
+                <p className="text-xs text-[#5C6066] leading-snug">{risk.description}</p>
+                <div className="pt-1.5 border-t border-[#E5E0D5] text-xs leading-snug">
                   <span className="text-[#9A6E2E] font-semibold">
                     {t.report.mitigationPrefix}{' '}
                   </span>
@@ -584,23 +584,23 @@ export const ReportView: React.FC<ReportViewProps> = ({
           })}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5 space-y-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
             <h4 className="text-sm font-semibold text-[#1E2022]">
               {t.report.assumptionsTitle}
             </h4>
-            <ul className="space-y-2 text-xs text-[#3A3D42] leading-relaxed list-disc pl-4">
+            <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
               {analysis.assumptions.map((item, i) => (
                 <li key={i}>{item}</li>
               ))}
             </ul>
           </div>
 
-          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-5 space-y-2.5">
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
             <h4 className="text-sm font-semibold text-[#1E2022]">
               {t.report.preLaunchTitle}
             </h4>
-            <ul className="space-y-2 text-xs text-[#3A3D42] leading-relaxed list-decimal pl-4">
+            <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
               {analysis.preLaunchSteps.map((step, i) => (
                 <li key={i}>{step}</li>
               ))}

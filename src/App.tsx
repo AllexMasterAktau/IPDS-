@@ -31,6 +31,7 @@ const LS_ACTIVE_PROJECT_KEY = 'ipds_active_project_v1';
 const LS_LANGUAGE_KEY = 'ipds_language_v1';
 const LS_DISPLAY_CURRENCY_KEY = 'ipds_display_currency_v1';
 const LS_FX_STATE_KEY = 'ipds_fx_state_v1';
+const LS_ADMIN_KEY_MODE = 'ipds_admin_key_mode_v1';
 const SYNC_CHANNEL_NAME = 'ipds_terminal_sync';
 
 function readJsonFromStorage<T>(key: string, fallback: T): T {
@@ -86,6 +87,22 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [adminKeyMode] = useState<boolean>(() => {
+    try {
+      const adminParam = urlParams.get('admin');
+      if (adminParam === '1') {
+        localStorage.setItem(LS_ADMIN_KEY_MODE, '1');
+        return true;
+      }
+      if (adminParam === '0') {
+        localStorage.removeItem(LS_ADMIN_KEY_MODE);
+        return false;
+      }
+      return localStorage.getItem(LS_ADMIN_KEY_MODE) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [serverGeminiConfigured, setServerGeminiConfigured] = useState<boolean | null>(null);
   const [forceShowKeyInput, setForceShowKeyInput] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -276,6 +293,7 @@ export default function App() {
 
   const isAuthenticated = Boolean(session?.sessionToken && activeUserEmail);
   const isAdmin = Boolean(isAuthenticated && activeUserEmail === ADMIN_EMAIL);
+  const canManageGeminiKey = isAdmin || adminKeyMode;
   const adminGasConfigured = Boolean(gasWebhookUrl);
 
 
@@ -344,31 +362,33 @@ export default function App() {
     setAdminSyncingPending(true);
     setGlobalError(null);
     try {
-      const res = await fetch('/api/admin/sync-pending', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.sessionToken}`,
-        },
-        body: JSON.stringify({ gasWebhookUrl }),
-      });
-      const contentType = res.headers.get('content-type') || '';
-      const raw = await res.text();
-      const data =
-        contentType.includes('application/json') && raw
-          ? (JSON.parse(raw) as { ok?: boolean; message?: string; projects?: ProjectRecord[] })
-          : null;
-      if (!res.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            (language === 'en'
-              ? 'Failed to sync pending leads to Google Sheet.'
-              : 'Не удалось отправить ожидающие заявки в Google Таблицу.')
-        );
+      const pending = projects.filter((p) => p.leadSyncStatus !== 'synced');
+      for (const proj of pending) {
+        await fetch(gasWebhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            id: proj.id,
+            fullName: proj.fullName,
+            email: proj.email,
+            projectName: proj.projectName,
+            region: proj.region,
+            customRegion: proj.customRegion,
+            category: proj.category,
+            comment: proj.comment,
+            currencyCode: proj.currencyCode,
+            createdAt: proj.createdAt,
+          }),
+        });
       }
-      if (Array.isArray(data.projects)) {
-        setProjects(data.projects);
-      }
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.leadSyncStatus !== 'synced'
+            ? { ...p, leadSyncStatus: 'synced', updatedAt: new Date().toISOString() }
+            : p
+        )
+      );
     } catch (err) {
       setGlobalError(
         err instanceof Error
@@ -380,7 +400,7 @@ export default function App() {
     } finally {
       setAdminSyncingPending(false);
     }
-  }, [gasWebhookUrl, language, session?.sessionToken]);
+  }, [gasWebhookUrl, language, projects, session?.sessionToken]);
 
   const userProjects = useMemo(() => {
     const email = activeUserEmail || (projects[0]?.email ?? null);
@@ -676,6 +696,7 @@ export default function App() {
               onRefreshFx={() => void fetchLiveFxRates()}
               onApplyManualFx={handleApplyManualFx}
               onResetManualFx={handleResetManualFx}
+              canManageGeminiKey={canManageGeminiKey}
               serverGeminiConfigured={serverGeminiConfigured}
               forceShowKeyButton={forceShowKeyInput}
               onKeySaved={() => {
@@ -828,6 +849,7 @@ export default function App() {
               onRefreshFx={() => void fetchLiveFxRates()}
               onApplyManualFx={handleApplyManualFx}
               onResetManualFx={handleResetManualFx}
+              canManageGeminiKey={canManageGeminiKey}
               serverGeminiConfigured={serverGeminiConfigured}
               forceShowKeyButton={forceShowKeyInput}
               onKeySaved={() => {

@@ -358,20 +358,20 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto py-6 px-4 sm:px-8 lg:px-10 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-4">
       {/* Шапка панели администратора */}
-      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-5 sm:p-6 shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-1.5">
+      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-4 sm:p-5 shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="space-y-1 leading-snug">
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#9A6E2E]">
             <ShieldCheck className="w-4 h-4" />
             <span>{t.admin.badge}</span>
             <span className="text-[#8B8F96]">·</span>
             <span className="font-mono-tabular text-[#5C6066]">allmasters13@gmail.com</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#1E2022] tracking-tight">
+          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] tracking-tight leading-snug">
             {t.admin.title}
           </h2>
-          <p className="text-xs sm:text-sm text-[#5C6066]">{t.admin.subtitle}</p>
+          <p className="text-xs text-[#5C6066] leading-snug">{t.admin.subtitle}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
@@ -644,14 +644,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
             return (
               <div
                 key={proj.id}
-                className={`rounded-xl p-5 border transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] ${
+                className={`rounded-xl p-3.5 sm:p-4 border transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] ${
                   isSelected
                     ? 'bg-[#FFFFFF] border-[#1A1C1F]'
                     : 'bg-[#FAF8F3] border-[#E5E0D5] hover:border-[#C9BFA9]'
                 }`}
               >
-                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                  <div className="space-y-1.5 min-w-0">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                  <div className="space-y-1 min-w-0 leading-snug">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C6066]">
                       <span className="font-semibold text-[#1E2022]">{proj.fullName}</span>
                       <span>·</span>
@@ -801,31 +801,31 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           <table className="w-full text-left border-collapse text-xs">
             <thead className="bg-[#EFECE4] text-[#3A3D42] border-b border-[#E5E0D5]">
               <tr>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colInitiator}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colEmail}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colProjects}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colRegion}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colCategory}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colComment}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colSync}</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">{t.admin.colDate}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colInitiator}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colEmail}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colProjects}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colRegion}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colCategory}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colComment}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colSync}</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">{t.admin.colDate}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E0D5] bg-[#FFFFFF]">
               {contactRows.map((c) => (
-                <tr key={c.email} className="hover:bg-[#FAF8F3] align-top">
-                  <td className="px-4 py-3 font-medium text-[#1E2022] whitespace-nowrap">
+                <tr key={c.email} className="hover:bg-[#FAF8F3] align-top leading-snug">
+                  <td className="px-3 py-2 font-medium text-[#1E2022] whitespace-nowrap">
                     {c.fullName}
                   </td>
-                  <td className="px-4 py-3 font-mono-tabular text-[#9A6E2E] whitespace-nowrap">
+                  <td className="px-3 py-2 font-mono-tabular text-[#9A6E2E] whitespace-nowrap">
                     {c.email}
                   </td>
-                  <td className="px-4 py-3 min-w-[200px]">
-                    <div className="space-y-1">
+                  <td className="px-3 py-2 min-w-[200px]">
+                    <div className="space-y-0.5">
                       <div className="text-[11px] font-mono-tabular text-[#5C6066]">
                         {c.projects.length} {t.admin.projectsCountWord}
                       </div>
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-0.5">
                         {c.projects.map((p) => (
                           <button
                             key={p.id}
@@ -841,16 +841,16 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[#5C6066] whitespace-nowrap">
+                  <td className="px-3 py-2 text-[#5C6066] whitespace-nowrap">
                     {Array.from(c.regions).join(', ')}
                   </td>
-                  <td className="px-4 py-3 text-[#5C6066] max-w-[160px] truncate">
+                  <td className="px-3 py-2 text-[#5C6066] max-w-[160px] truncate">
                     {Array.from(c.categories).join(', ') || '—'}
                   </td>
-                  <td className="px-4 py-3 text-[#5C6066] max-w-[220px]">
+                  <td className="px-3 py-2 text-[#5C6066] max-w-[220px]">
                     <span className="line-clamp-2">{c.latestComment || '—'}</span>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-3 py-2 whitespace-nowrap">
                     {c.allSynced ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-700">
                         <CheckCircle2 className="w-3 h-3" />
@@ -863,7 +863,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-mono-tabular text-[#5C6066] whitespace-nowrap">
+                  <td className="px-3 py-2 font-mono-tabular text-[#5C6066] whitespace-nowrap">
                     {new Date(c.latestUpdatedAt).toLocaleDateString(
                       language === 'en' ? 'en-US' : 'ru-RU'
                     )}

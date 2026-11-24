@@ -19,10 +19,10 @@ export class MissingGeminiKeyError extends Error {
 
 export function getClientGeminiApiKey(): string {
   try {
-    return (localStorage.getItem(LS_GEMINI_KEY) || '').trim();
-  } catch {
-    return '';
-  }
+    const localKey = (localStorage.getItem(LS_GEMINI_KEY) || '').trim();
+    if (localKey) return localKey;
+  } catch {}
+  return ((import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || '').trim();
 }
 
 export function setClientGeminiApiKey(key: string) {
@@ -218,8 +218,8 @@ export async function clientAnalyzeProject(
   if (!apiKey) {
     throw new MissingGeminiKeyError(
       language === 'en'
-        ? 'Gemini API Key is not configured on the server or in your browser. Please enter your Gemini API key (AIza...).'
-        : 'Ключ Gemini API не задан на сервере и в браузере. Введите ваш ключ Gemini API (AIza...) для выполнения анализа.'
+        ? 'Gemini API key is not configured yet. Please sign in as administrator (?admin=1) to configure it.'
+        : 'Ключ Gemini API ещё не задан. Для настройки ключа войдите как администратор или откройте терминал с ?admin=1.'
     );
   }
 
@@ -403,8 +403,8 @@ export async function clientChatWithAnalyst(
   if (!apiKey) {
     throw new MissingGeminiKeyError(
       language === 'en'
-        ? 'Gemini API Key is not configured on the server or in your browser. Please enter your Gemini API key (AIza...).'
-        : 'Ключ Gemini API не задан на сервере и в браузере. Введите ваш ключ Gemini API (AIza...) для продолжения диалога.'
+        ? 'Gemini API key is not configured yet. Please sign in as administrator (?admin=1) to configure it.'
+        : 'Ключ Gemini API ещё не задан. Для настройки ключа войдите как администратор или откройте терминал с ?admin=1.'
     );
   }
 
@@ -521,80 +521,9 @@ ${userMessage}
 export async function analyzeProjectSmart(
   project: ProjectRecord,
   language: Language = 'ru',
-  sessionToken?: string,
-  serverGeminiConfigured?: boolean | null
+  _sessionToken?: string,
+  _serverGeminiConfigured?: boolean | null
 ): Promise<{ analysis: ProjectAnalysis; usedFallbackNoServerKey: boolean }> {
-  const clientApiKey = getClientGeminiApiKey();
-
-  if (serverGeminiConfigured !== false) {
-    try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(project.id)}/analyze`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
-          body: JSON.stringify({
-            project,
-            language,
-            ...(clientApiKey ? { clientApiKey } : {}),
-          }),
-        }
-      );
-
-      const contentType = res.headers.get('content-type') || '';
-      const rawText = await res.text();
-      let data: any = null;
-      if (contentType.includes('application/json') && rawText) {
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          data = null;
-        }
-      }
-
-      if (res.ok && data?.ok !== false && data?.analysis) {
-        return {
-          analysis: data.analysis as ProjectAnalysis,
-          usedFallbackNoServerKey: false,
-        };
-      }
-
-      // Если сервер не настроен (404 / не JSON / нет серверного ключа), переходим на клиентский fallback
-      if (
-        res.status === 404 ||
-        !data ||
-        data.code === 'NO_API_KEY'
-      ) {
-        const analysis = await clientAnalyzeProject(project, language);
-        return { analysis, usedFallbackNoServerKey: true };
-      }
-
-      throw new Error(
-        formatGeminiUserError(
-          data.error ||
-            data.message ||
-            (language === 'en'
-              ? 'Failed to run project analysis.'
-              : 'Не удалось выполнить анализ проекта.'),
-          language
-        )
-      );
-    } catch (err) {
-      if (err instanceof MissingGeminiKeyError) {
-        throw err;
-      }
-      // При сетевом сбое к /api/* пробуем клиентский вызов только если локальный ключ задан
-      if (err instanceof TypeError && clientApiKey) {
-        const analysis = await clientAnalyzeProject(project, language);
-        return { analysis, usedFallbackNoServerKey: true };
-      }
-      throw new Error(formatGeminiUserError(err, language));
-    }
-  }
-
   const analysis = await clientAnalyzeProject(project, language);
   return { analysis, usedFallbackNoServerKey: true };
 }
@@ -605,98 +534,13 @@ export async function chatWithAnalystSmart(
   newDocuments: LocalDocumentDigest[],
   currentEffectiveInputs?: FinancialInputs,
   language: Language = 'ru',
-  sessionToken?: string,
-  serverGeminiConfigured?: boolean | null
+  _sessionToken?: string,
+  _serverGeminiConfigured?: boolean | null
 ): Promise<{
   reply: string;
   suggestedOverrides: Partial<FinancialInputs> | null;
   usedFallbackNoServerKey: boolean;
 }> {
-  const clientApiKey = getClientGeminiApiKey();
-
-  if (serverGeminiConfigured !== false) {
-    try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(project.id)}/chat`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
-          body: JSON.stringify({
-            project,
-            message: userMessage,
-            newDocuments,
-            currentEffectiveInputs,
-            language,
-            ...(clientApiKey ? { clientApiKey } : {}),
-          }),
-        }
-      );
-
-      const contentType = res.headers.get('content-type') || '';
-      const rawText = await res.text();
-      let data: any = null;
-      if (contentType.includes('application/json') && rawText) {
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          data = null;
-        }
-      }
-
-      if (res.ok && data?.ok !== false && data?.assistantMessage) {
-        return {
-          reply: String(data.assistantMessage.content || ''),
-          suggestedOverrides: data.assistantMessage.suggestedOverrides ?? null,
-          usedFallbackNoServerKey: false,
-        };
-      }
-
-      if (
-        res.status === 404 ||
-        !data ||
-        data.code === 'NO_API_KEY'
-      ) {
-        const resClient = await clientChatWithAnalyst(
-          project,
-          userMessage,
-          newDocuments,
-          currentEffectiveInputs,
-          language
-        );
-        return { ...resClient, usedFallbackNoServerKey: true };
-      }
-
-      throw new Error(
-        formatGeminiUserError(
-          data.error ||
-            data.message ||
-            (language === 'en'
-              ? 'Failed to get analyst response.'
-              : 'Не удалось получить ответ аналитика.'),
-          language
-        )
-      );
-    } catch (err) {
-      if (err instanceof MissingGeminiKeyError) {
-        throw err;
-      }
-      if (err instanceof TypeError && clientApiKey) {
-        const resClient = await clientChatWithAnalyst(
-          project,
-          userMessage,
-          newDocuments,
-          currentEffectiveInputs,
-          language
-        );
-        return { ...resClient, usedFallbackNoServerKey: true };
-      }
-      throw new Error(formatGeminiUserError(err, language));
-    }
-  }
-
   const resClient = await clientChatWithAnalyst(
     project,
     userMessage,

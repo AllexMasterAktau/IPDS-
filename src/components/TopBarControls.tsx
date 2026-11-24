@@ -16,6 +16,7 @@ interface TopBarControlsProps {
   onApplyManualFx: (rates: FxRateMap) => void;
   onResetManualFx: () => void;
   variant?: 'light' | 'dark';
+  canManageGeminiKey?: boolean;
   serverGeminiConfigured?: boolean | null;
   forceShowKeyButton?: boolean;
   onKeySaved?: () => void;
@@ -34,8 +35,7 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   onApplyManualFx,
   onResetManualFx,
   variant = 'light',
-  serverGeminiConfigured = null,
-  forceShowKeyButton = false,
+  canManageGeminiKey = false,
   onKeySaved,
 }) => {
   const t = getTranslations(language);
@@ -50,7 +50,7 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   const [apiKeyInput, setApiKeyInput] = useState(() => getClientGeminiApiKey());
   const keyPopoverRef = useRef<HTMLDivElement>(null);
   const hasLocalKey = Boolean(getClientGeminiApiKey());
-  const showKeyButton = serverGeminiConfigured === false || forceShowKeyButton || hasLocalKey;
+  const showKeyButton = Boolean(canManageGeminiKey);
 
   useEffect(() => {
     setRubInput(String(fxState.rates.RUB));

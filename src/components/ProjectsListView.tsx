@@ -115,16 +115,16 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
     }
 
     return (
-      <div className="w-full max-w-[1600px] mx-auto py-6 px-4 sm:px-8 lg:px-10 space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-[#1E2022]">{t.projects.heading}</h2>
-            <p className="text-xs text-[#5C6066] mt-0.5">
+            <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug">{t.projects.heading}</h2>
+            <p className="text-xs text-[#5C6066] leading-snug mt-0.5">
               {t.projects.previewCountLabel}: {latestPreviews.length} · {t.projects.lockedBadge}
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64">
               <Search className="w-4 h-4 text-[#5C6066] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
@@ -132,29 +132,29 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t.projects.searchPlaceholder}
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022] placeholder:text-[#8B8F96]"
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022] placeholder:text-[#8B8F96]"
               />
             </div>
           </div>
         </div>
 
         {/* Информационная плашка о закрытом предпросмотре */}
-        <div className="rounded-xl bg-[#EFECE4] border border-[#D8C7A5] px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-xs text-[#3A3D42]">
+        <div className="rounded-xl bg-[#EFECE4] border border-[#D8C7A5] px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-[#3A3D42] leading-snug">
             <Lock className="w-4 h-4 text-[#9A6E2E] shrink-0" />
             <span>{t.projects.previewSubtitle}</span>
           </div>
           <button
             type="button"
             onClick={onOpenAuthModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap self-start sm:self-auto"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap self-start sm:self-auto"
           >
             <KeyRound className="w-3.5 h-3.5 text-[#F5F3EE]" />
             <span>{t.projects.unlockBtn}</span>
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filteredPreviews.map((proj) => {
             const regionLabel = getRegionDisplayLabel(proj.region, proj.customRegion, language);
             return (
@@ -162,10 +162,10 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
                 key={proj.id}
                 type="button"
                 onClick={onOpenAuthModal}
-                className="w-full text-left rounded-xl p-5 border border-[#E5E0D5] bg-[#FAF8F3] hover:bg-[#FFFFFF] hover:border-[#32363C] transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] cursor-pointer group"
+                className="w-full text-left rounded-xl p-3.5 sm:p-4 border border-[#E5E0D5] bg-[#FAF8F3] hover:bg-[#FFFFFF] hover:border-[#32363C] transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] cursor-pointer group"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1.5 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C6066]">
                       <span>{regionLabel}</span>
                       {proj.category && (
@@ -250,17 +250,17 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
   }
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto py-6 px-4 sm:px-8 lg:px-10 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-[#1E2022]">{t.projects.heading}</h2>
-          <p className="text-xs text-[#5C6066] mt-0.5">
+          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug">{t.projects.heading}</h2>
+          <p className="text-xs text-[#5C6066] leading-snug mt-0.5">
             {t.projects.countLabel}: {scopedProjects.length} ·{' '}
             {t.projects.userScopeNote.replace('{email}', activeUserEmail)}
           </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64">
             <Search className="w-4 h-4 text-[#5C6066] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -268,13 +268,13 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t.projects.searchPlaceholder}
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022] placeholder:text-[#8B8F96]"
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022] placeholder:text-[#8B8F96]"
             />
           </div>
           <button
             type="button"
             onClick={onOpenCreateModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shrink-0 shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shrink-0 shadow-xs"
           >
             <Plus className="w-3.5 h-3.5 text-[#F5F3EE]" />
             <span>{t.common.createProject}</span>
@@ -282,7 +282,7 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {filtered.map((proj) => {
           const isSelected = proj.id === activeProjectId;
           const isAnalyzing = analyzingProjectId === proj.id;
@@ -304,14 +304,14 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
           return (
             <div
               key={proj.id}
-              className={`rounded-xl p-5 border transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] ${
+              className={`rounded-xl p-3.5 sm:p-4 border transition-all shadow-[0_2px_10px_rgba(22,24,26,0.03)] ${
                 isSelected
                   ? 'bg-[#FFFFFF] border-[#1A1C1F]'
                   : 'bg-[#FAF8F3] border-[#E5E0D5] hover:border-[#C9BFA9]'
               }`}
             >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="space-y-1.5 min-w-0">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="space-y-1 min-w-0 leading-snug">
                   <div className="text-xs text-[#5C6066]">
                     {regionLabel} · {displayCurrency}
                     {baseCurrency !== displayCurrency ? ` (${baseCurrency})` : ''} · {proj.fullName} ·{' '}
