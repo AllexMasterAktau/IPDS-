@@ -36,6 +36,7 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   onResetManualFx,
   variant = 'light',
   canManageGeminiKey = false,
+  serverGeminiConfigured = false,
   onKeySaved,
 }) => {
   const t = getTranslations(language);
@@ -50,6 +51,7 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
   const [apiKeyInput, setApiKeyInput] = useState(() => getClientGeminiApiKey());
   const keyPopoverRef = useRef<HTMLDivElement>(null);
   const hasLocalKey = Boolean(getClientGeminiApiKey());
+  const hasEffectiveKey = Boolean(hasLocalKey || serverGeminiConfigured);
   const showKeyButton = Boolean(canManageGeminiKey);
 
   useEffect(() => {
@@ -274,14 +276,14 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
             }}
             title={language === 'en' ? 'Gemini API Key Settings' : 'Настройка Gemini API Key'}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer whitespace-nowrap text-xs ${
-              hasLocalKey
+              hasEffectiveKey
                 ? 'bg-emerald-900/10 border-emerald-600/40 text-emerald-800 hover:bg-emerald-900/20'
                 : 'bg-[#1A1C1F] border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE]'
             }`}
           >
             <KeyRound className="w-3.5 h-3.5 shrink-0" />
             <span className="hidden sm:inline font-medium">
-              {hasLocalKey
+              {hasEffectiveKey
                 ? language === 'en'
                   ? 'API Key Set'
                   : 'Ключ задан'
@@ -299,7 +301,11 @@ export const TopBarControls: React.FC<TopBarControlsProps> = ({
                     {language === 'en' ? 'Gemini API Key' : 'Ключ Gemini API'}
                   </div>
                   <div className="text-[11px] text-[#5C6066] mt-0.5">
-                    {language === 'en'
+                    {serverGeminiConfigured && !hasLocalKey
+                      ? language === 'en'
+                        ? 'Environment key is active for all users by default. Optional local override:'
+                        : 'Ключ из окружения сервера активен по умолчанию. При необходимости задайте локальный:'
+                      : language === 'en'
                       ? 'Enter your API key (AIza...) for browser analysis.'
                       : 'Введите ваш ключ (AIza...) для анализа из браузера.'}
                   </div>

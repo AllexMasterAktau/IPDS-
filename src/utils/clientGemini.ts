@@ -10,6 +10,31 @@ import type {
 
 export const LS_GEMINI_KEY = 'ipds_gemini_api_key_v1';
 
+export interface RuntimeServerInfo {
+  hasBackend: boolean;
+  serverGeminiConfigured: boolean;
+}
+
+declare global {
+  interface Window {
+    __IPDS_RUNTIME__?: {
+      hasBackend?: boolean;
+      serverGeminiConfigured?: boolean;
+    };
+  }
+}
+
+export function getRuntimeServerInfo(): RuntimeServerInfo {
+  if (typeof window === 'undefined') {
+    return { hasBackend: false, serverGeminiConfigured: false };
+  }
+  const rt = window.__IPDS_RUNTIME__;
+  return {
+    hasBackend: Boolean(rt?.hasBackend),
+    serverGeminiConfigured: Boolean(rt?.serverGeminiConfigured),
+  };
+}
+
 export class MissingGeminiKeyError extends Error {
   constructor(message: string) {
     super(message);
@@ -17,12 +42,27 @@ export class MissingGeminiKeyError extends Error {
   }
 }
 
+export function getBuildEnvGeminiApiKey(): string {
+  const viteGemini = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || '';
+  if (viteGemini.trim()) return viteGemini.trim();
+  const viteGoogle = (import.meta.env.VITE_GOOGLE_API_KEY as string | undefined) || '';
+  return viteGoogle.trim();
+}
+
 export function getClientGeminiApiKey(): string {
   try {
     const localKey = (localStorage.getItem(LS_GEMINI_KEY) || '').trim();
     if (localKey) return localKey;
   } catch {}
-  return ((import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || '').trim();
+  return getBuildEnvGeminiApiKey();
+}
+
+export function isGeminiKeyAvailable(serverGeminiConfiguredOverride?: boolean | null): boolean {
+  if (getClientGeminiApiKey()) return true;
+  if (typeof serverGeminiConfiguredOverride === 'boolean') {
+    return serverGeminiConfiguredOverride;
+  }
+  return getRuntimeServerInfo().serverGeminiConfigured;
 }
 
 export function setClientGeminiApiKey(key: string) {
@@ -583,9 +623,60 @@ ${userMessage}
 export async function analyzeProjectSmart(
   project: ProjectRecord,
   language: Language = 'ru',
-  _sessionToken?: string,
-  _serverGeminiConfigured?: boolean | null
+  sessionToken?: string,
+  serverGeminiConfigured?: boolean | null
 ): Promise<{ analysis: ProjectAnalysis; usedFallbackNoServerKey: boolean }> {
+  const runtime = getRuntimeServerInfo();
+  const useServerKey =
+    runtime.hasBackend &&
+    (serverGeminiConfigured ?? runtime.serverGeminiConfigured) === true;
+
+  if (useServerKey) {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/analyze`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ project, language }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { ok?: boolean; analysis?: ProjectAnalysis };
+        if (data?.ok && data.analysis) {
+          return { analysis: data.analysis, usedFallbackNoServerKey: false };
+        }
+      }
+
+      if (res.status !== 404) {
+        const errPayload = (await res.json().catch(() => null)) as {
+          code?: string;
+          error?: string;
+        } | null;
+        if (errPayload?.code !== 'NO_API_KEY') {
+          throw new Error(errPayload?.error || formatGeminiUserError(null, language));
+        }
+      }
+    } catch (err) {
+      // If it's a real non-key backend/overload error (not network/404/NO_API_KEY), surface it
+      if (
+        err instanceof Error &&
+        !(err instanceof TypeError) &&
+        !getClientGeminiApiKey()
+      ) {
+        throw err;
+      }
+      if (err instanceof Error && !(err instanceof TypeError)) {
+        // Only fall back to client key if user actually has a client key configured
+        if (!getClientGeminiApiKey()) {
+          throw err;
+        }
+      }
+    }
+  }
+
   const analysis = await clientAnalyzeProject(project, language);
   return { analysis, usedFallbackNoServerKey: true };
 }
@@ -596,13 +687,71 @@ export async function chatWithAnalystSmart(
   newDocuments: LocalDocumentDigest[],
   currentEffectiveInputs?: FinancialInputs,
   language: Language = 'ru',
-  _sessionToken?: string,
-  _serverGeminiConfigured?: boolean | null
+  sessionToken?: string,
+  serverGeminiConfigured?: boolean | null
 ): Promise<{
   reply: string;
   suggestedOverrides: Partial<FinancialInputs> | null;
   usedFallbackNoServerKey: boolean;
 }> {
+  const runtime = getRuntimeServerInfo();
+  const useServerKey =
+    runtime.hasBackend &&
+    (serverGeminiConfigured ?? runtime.serverGeminiConfigured) === true;
+
+  if (useServerKey) {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/chat`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          project,
+          message: userMessage,
+          newDocuments,
+          currentEffectiveInputs,
+          language,
+        }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          ok?: boolean;
+          assistantMessage?: {
+            content?: string;
+            suggestedOverrides?: Partial<FinancialInputs> | null;
+          };
+        };
+        if (data?.ok && data.assistantMessage?.content) {
+          return {
+            reply: data.assistantMessage.content,
+            suggestedOverrides: data.assistantMessage.suggestedOverrides ?? null,
+            usedFallbackNoServerKey: false,
+          };
+        }
+      }
+
+      if (res.status !== 404) {
+        const errPayload = (await res.json().catch(() => null)) as {
+          code?: string;
+          error?: string;
+        } | null;
+        if (errPayload?.code !== 'NO_API_KEY') {
+          throw new Error(errPayload?.error || formatGeminiUserError(null, language));
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && !(err instanceof TypeError)) {
+        if (!getClientGeminiApiKey()) {
+          throw err;
+        }
+      }
+    }
+  }
+
   const resClient = await clientChatWithAnalyst(
     project,
     userMessage,

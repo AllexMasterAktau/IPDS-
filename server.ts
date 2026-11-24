@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import {
@@ -41,6 +42,22 @@ import type { Language, LocalDocumentDigest, ProjectRecord } from './src/types/i
 const DEFAULT_GAS_WEBHOOK_URL = process.env.GAS_WEBHOOK_URL?.trim() || '';
 
 const PORT = 3000;
+
+function isServerGeminiConfigured(): boolean {
+  return Boolean((process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim());
+}
+
+function injectRuntimeFlag(html: string): string {
+  const payload = JSON.stringify({
+    hasBackend: true,
+    serverGeminiConfigured: isServerGeminiConfigured(),
+  });
+  const scriptTag = `<script>window.__IPDS_RUNTIME__=${payload};</script>`;
+  if (html.includes('</head>')) {
+    return html.replace('</head>', `    ${scriptTag}\n  </head>`);
+  }
+  return `${scriptTag}${html}`;
+}
 
 function extractBearerToken(req: express.Request): string | undefined {
   const auth = req.headers.authorization;
@@ -712,12 +729,15 @@ async function startServer() {
         return res.status(403).json({ ok: false, error: 'Доступ к проекту не подтверждён.' });
       }
 
-      const mergedProject: ProjectRecord = {
-        ...targetProject,
-        documents: clientSnapshot?.documents ?? targetProject.documents,
-        comment: clientSnapshot?.comment ?? targetProject.comment,
-        category: clientSnapshot?.category ?? targetProject.category,
-      };
+      const mergedProject: ProjectRecord = clientSnapshot
+        ? {
+            ...targetProject,
+            ...clientSnapshot,
+            documents: clientSnapshot.documents ?? targetProject.documents,
+            comment: clientSnapshot.comment ?? targetProject.comment,
+            category: clientSnapshot.category ?? targetProject.category,
+          }
+        : targetProject;
 
       const language: Language = req.body?.language === 'en' ? 'en' : 'ru';
       const analysis = await analyzeProjectWithGemini(mergedProject, language, effectiveKey);
@@ -789,9 +809,19 @@ async function startServer() {
           .map((d) => d.name)
           .join(', ')}) и дополни оценку проекта с учётом сохранённого паспорта.`;
 
+      const mergedChatProject: ProjectRecord = clientSnapshot
+        ? {
+            ...targetProject,
+            ...clientSnapshot,
+            documents: clientSnapshot.documents ?? targetProject.documents,
+            dialogue: clientSnapshot.dialogue ?? targetProject.dialogue,
+            analysis: clientSnapshot.analysis ?? targetProject.analysis,
+          }
+        : targetProject;
+
       const language: Language = req.body?.language === 'en' ? 'en' : 'ru';
       const aiResponse = await chatWithAnalystGemini(
-        targetProject,
+        mergedChatProject,
         promptText,
         newDocuments,
         currentEffectiveInputs,
@@ -821,9 +851,9 @@ async function startServer() {
       };
 
       const saved = upsertProjectRecord({
-        ...targetProject,
-        documents: [...targetProject.documents, ...newDocuments],
-        dialogue: [...targetProject.dialogue, userMsgRecord, assistantMsgRecord],
+        ...mergedChatProject,
+        documents: [...mergedChatProject.documents, ...newDocuments],
+        dialogue: [...mergedChatProject.dialogue, userMsgRecord, assistantMsgRecord],
       });
 
       return res.json({
@@ -851,12 +881,39 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    app.use(async (req, res, next) => {
+      if (
+        req.method !== 'GET' ||
+        req.path.startsWith('/api/') ||
+        req.path.startsWith('/@') ||
+        req.path.startsWith('/src/') ||
+        req.path.startsWith('/node_modules/') ||
+        req.path.includes('.')
+      ) {
+        return next();
+      }
+      const accept = req.headers.accept || '';
+      if (!accept.includes('text/html') && accept !== '*/*') {
+        return next();
+      }
+      try {
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        const rawHtml = fs.readFileSync(indexPath, 'utf-8');
+        const transformed = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        return res.status(200).set({ 'Content-Type': 'text/html' }).end(injectRuntimeFlag(transformed));
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        return next(e);
+      }
+    });
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distDir));
+    app.use(express.static(distDir, { index: false }));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(distDir, 'index.html'));
+      const distIndex = path.join(distDir, 'index.html');
+      const rawHtml = fs.readFileSync(distIndex, 'utf-8');
+      return res.status(200).set({ 'Content-Type': 'text/html' }).end(injectRuntimeFlag(rawHtml));
     });
   }
 

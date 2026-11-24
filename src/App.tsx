@@ -11,7 +11,11 @@ import { TopBarControls } from './components/TopBarControls';
 import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
 import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
-import { analyzeProjectSmart, MissingGeminiKeyError } from './utils/clientGemini';
+import {
+  analyzeProjectSmart,
+  getRuntimeServerInfo,
+  MissingGeminiKeyError,
+} from './utils/clientGemini';
 import {
   deduplicateProjectPreviews,
   deduplicateProjects,
@@ -119,7 +123,9 @@ export default function App() {
       return false;
     }
   });
-  const [serverGeminiConfigured, setServerGeminiConfigured] = useState<boolean | null>(null);
+  const [serverGeminiConfigured, setServerGeminiConfigured] = useState<boolean | null>(
+    () => getRuntimeServerInfo().serverGeminiConfigured
+  );
   const [forceShowKeyInput, setForceShowKeyInput] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSyncingPending, setAdminSyncingPending] = useState(false);
@@ -593,7 +599,7 @@ export default function App() {
         session?.sessionToken,
         serverGeminiConfigured
       );
-      if (usedFallbackNoServerKey) {
+      if (usedFallbackNoServerKey && serverGeminiConfigured) {
         setServerGeminiConfigured(false);
       }
       const updated: ProjectRecord = {
