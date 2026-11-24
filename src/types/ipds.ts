@@ -99,6 +99,8 @@ export interface ProjectAnalysis {
   recommendations?: ProjectRecommendations;
   generatedAt: string;
   modelUsed: string;
+  modelId?: string;
+  usedFallbackModel?: boolean;
 }
 
 export interface DialogueAttachmentMeta {
@@ -113,6 +115,9 @@ export interface DialogueMessage {
   content: string;
   attachments?: DialogueAttachmentMeta[];
   suggestedOverrides?: Partial<FinancialInputs> | null;
+  modelUsed?: string;
+  modelId?: string;
+  usedFallbackModel?: boolean;
   createdAt: string;
 }
 

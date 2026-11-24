@@ -847,6 +847,9 @@ async function startServer() {
         role: 'assistant' as const,
         content: aiResponse.reply,
         suggestedOverrides: aiResponse.suggestedOverrides,
+        modelUsed: aiResponse.modelUsed,
+        modelId: aiResponse.modelId,
+        usedFallbackModel: aiResponse.usedFallbackModel,
         createdAt: new Date(Date.now() + 10).toISOString(),
       };
 

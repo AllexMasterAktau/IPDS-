@@ -257,11 +257,24 @@ export const ReportView: React.FC<ReportViewProps> = ({
               <span>{t.report.backToTerminal}</span>
             </a>
           )}
-          <div className="text-xs text-[#5C6066] leading-snug">
-            {regionLabel} · {displayCurrency} ({displaySymbol}) · {t.report.initiator}:{' '}
-            {project.fullName}
-            {hasOverrides ? ` · ${t.report.manuallyRecalculated}` : ''}
-            {fxNoteText}
+          <div className="text-xs text-[#5C6066] leading-snug flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              {regionLabel} · {displayCurrency} ({displaySymbol}) · {t.report.initiator}:{' '}
+              {project.fullName}
+              {hasOverrides ? ` · ${t.report.manuallyRecalculated}` : ''}
+              {fxNoteText}
+            </span>
+            {analysis.modelUsed && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#EFECE4] border border-[#DDD5C3] text-[11px] font-medium text-[#3A3D42]">
+                <span>{t.report.modelLabel}:</span>
+                <span className="font-mono-tabular text-[#1E2022]">{analysis.modelUsed}</span>
+                {analysis.usedFallbackModel && (
+                  <span className="text-[#9A6E2E] font-semibold">
+                    ({t.report.fallbackModelTag})
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug mt-0.5">
             {project.projectName}

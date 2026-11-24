@@ -72,18 +72,23 @@ export function setClientGeminiApiKey(key: string) {
 }
 
 const PRIMARY_MODEL = 'gemini-3.8-flash';
-const MODEL_CHAIN = [
+export const GEMINI_MODEL_CASCADE = [
   PRIMARY_MODEL,
   'gemini-4-hydrogen',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
 ] as const;
-const PRIMARY_RETRY_DELAYS_MS = [2000, 4000];
-const FALLBACK_RETRY_DELAYS_MS = [2000];
+const RETRY_DELAYS_MS = [1000, 2000];
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
   'gemini-3.8-flash': 'Gemini 3.8 Flash',
   'gemini-4-hydrogen': 'Gemini 4 Flash',
+  'gemini-3.6-flash': 'Gemini 3.6 Flash',
+  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite',
   'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+  'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
 };
 
 function sleep(ms: number): Promise<void> {
@@ -113,6 +118,35 @@ function getErrorStatus(err: unknown): number | null {
   return match ? Number(match[1]) : null;
 }
 
+function isInvalidApiKeyError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 401) return true;
+  const msg = getErrorText(err).toLowerCase();
+  return (
+    msg.includes('api_key_invalid') ||
+    msg.includes('api key not valid') ||
+    msg.includes('invalid api key') ||
+    msg.includes('api key expired')
+  );
+}
+
+function isHardQuotaOrModelBlockedError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  const msg = getErrorText(err).toLowerCase();
+  if (status === 403 || msg.includes('permission_denied')) {
+    return !isInvalidApiKeyError(err);
+  }
+  if (status === 429 || msg.includes('resource_exhausted')) {
+    return (
+      msg.includes('limit: 0') ||
+      msg.includes('free_tier') ||
+      msg.includes('billing') ||
+      msg.includes('not enabled')
+    );
+  }
+  return false;
+}
+
 function isTransientOverloadError(err: unknown): boolean {
   const status = getErrorStatus(err);
   if (status === 429 || status === 503) return true;
@@ -128,26 +162,24 @@ function isTransientOverloadError(err: unknown): boolean {
   );
 }
 
-function isModelNotFoundError(err: unknown): boolean {
+function isModelNotFoundOrUnsupportedError(err: unknown): boolean {
   const status = getErrorStatus(err);
   if (status === 404) return true;
   const msg = getErrorText(err).toLowerCase();
   return (
     msg.includes('not_found') ||
     msg.includes('no longer available') ||
-    msg.includes('is not found')
+    msg.includes('is not found') ||
+    msg.includes('is not supported') ||
+    msg.includes('unsupported')
   );
 }
 
-function isApiKeyError(err: unknown): boolean {
+function isThinkingConfigError(err: unknown): boolean {
   const status = getErrorStatus(err);
-  if (status === 401 || status === 403) return true;
+  if (status !== 400) return false;
   const msg = getErrorText(err).toLowerCase();
-  return (
-    msg.includes('api_key_invalid') ||
-    msg.includes('api key not valid') ||
-    msg.includes('permission_denied')
-  );
+  return msg.includes('thinking') || msg.includes('thinking_level') || msg.includes('thinkinglevel');
 }
 
 export function formatGeminiUserError(
@@ -157,15 +189,20 @@ export function formatGeminiUserError(
   if (err instanceof MissingGeminiKeyError) {
     return err.message;
   }
-  if (isTransientOverloadError(err)) {
-    return language === 'en'
-      ? 'AI service is temporarily overloaded. Please try again in 10–15 seconds.'
-      : 'Сервис ИИ временно перегружен, попробуйте повторить запрос через 10–15 секунд.';
-  }
-  if (isApiKeyError(err)) {
+  if (isInvalidApiKeyError(err)) {
     return language === 'en'
       ? 'Invalid or rejected Gemini API key. Please check your key settings.'
       : 'Недействительный или отклонённый ключ Gemini API. Проверьте настройки ключа.';
+  }
+  if (isTransientOverloadError(err)) {
+    return language === 'en'
+      ? 'All free Gemini models are temporarily overloaded or rate-limited. Please try again in 10–15 seconds.'
+      : 'Все доступные модели Gemini временно перегружены или достигли лимита. Повторите запрос через 10–15 секунд.';
+  }
+  if (isHardQuotaOrModelBlockedError(err)) {
+    return language === 'en'
+      ? 'Available Gemini models are currently restricted by quota or permissions. Check your API key limits.'
+      : 'Доступные модели Gemini ограничены по квоте или правам доступа. Проверьте лимиты ключа API.';
   }
 
   const raw = getErrorText(err).trim();
@@ -184,20 +221,24 @@ async function generateWithRetryAndFallback(
     config: Record<string, unknown>;
   },
   language: Language
-): Promise<{ text: string; modelUsed: string }> {
+): Promise<{
+  text: string;
+  modelUsed: string;
+  modelId: string;
+  usedFallbackModel: boolean;
+}> {
   let lastError: unknown = null;
 
-  for (let mIdx = 0; mIdx < MODEL_CHAIN.length; mIdx += 1) {
-    const model = MODEL_CHAIN[mIdx];
-    const delays =
-      mIdx === 0 ? PRIMARY_RETRY_DELAYS_MS : FALLBACK_RETRY_DELAYS_MS;
+  for (let mIdx = 0; mIdx < GEMINI_MODEL_CASCADE.length; mIdx += 1) {
+    const model = GEMINI_MODEL_CASCADE[mIdx];
+    let activeConfig: Record<string, unknown> = { ...params.config };
 
-    for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
       try {
         const response = await ai.models.generateContent({
           model,
           contents: params.contents,
-          config: params.config as never,
+          config: activeConfig as never,
         });
         const rawText = (response.text ?? '').trim();
         if (!rawText) {
@@ -207,30 +248,42 @@ async function generateWithRetryAndFallback(
               : 'Модель вернула пустой ответ. Повторите попытку.'
           );
         }
+        const displayName = MODEL_DISPLAY_NAMES[model] || model;
         return {
           text: rawText,
-          modelUsed: MODEL_DISPLAY_NAMES[model] || model,
+          modelUsed: `${displayName} (${model})`,
+          modelId: model,
+          usedFallbackModel: mIdx > 0,
         };
       } catch (err) {
         lastError = err;
 
-        if (isApiKeyError(err)) {
+        if (isInvalidApiKeyError(err)) {
           throw new Error(formatGeminiUserError(err, language));
         }
 
-        if (isModelNotFoundError(err)) {
+        if (isThinkingConfigError(err) && 'thinkingConfig' in activeConfig) {
+          const { thinkingConfig: _removed, ...restConfig } = activeConfig;
+          activeConfig = restConfig;
+          continue;
+        }
+
+        if (
+          isModelNotFoundOrUnsupportedError(err) ||
+          isHardQuotaOrModelBlockedError(err)
+        ) {
           break;
         }
 
         if (isTransientOverloadError(err)) {
-          if (attempt < delays.length) {
-            await sleep(delays[attempt]);
+          if (attempt < RETRY_DELAYS_MS.length) {
+            await sleep(RETRY_DELAYS_MS[attempt]);
             continue;
           }
           break;
         }
 
-        throw new Error(formatGeminiUserError(err, language));
+        break;
       }
     }
   }
@@ -302,7 +355,8 @@ ${buildDocumentsContext(project.documents)}
    - crisisAndBottleneckPlan: План выхода из кризисных и узких точек (антикризисные действия на случай просадки спроса, кассового разрыва, задержки запуска или регуляторных ограничений);
    - growthPlanAndMetrics: План дальнейшего развития и ключевые контрольные метрики (поэтапное масштабирование и конкретные KPI/пороги контроля).`;
 
-  const { text: rawText, modelUsed } = await generateWithRetryAndFallback(
+  const { text: rawText, modelUsed, modelId, usedFallbackModel } =
+    await generateWithRetryAndFallback(
     ai,
     {
       contents: prompt,
@@ -477,6 +531,8 @@ ${buildDocumentsContext(project.documents)}
     recommendations: normalizedRecommendations,
     generatedAt: new Date().toISOString(),
     modelUsed,
+    modelId,
+    usedFallbackModel,
   };
 }
 
@@ -489,6 +545,9 @@ export async function clientChatWithAnalyst(
 ): Promise<{
   reply: string;
   suggestedOverrides: Partial<FinancialInputs> | null;
+  modelUsed: string;
+  modelId: string;
+  usedFallbackModel: boolean;
 }> {
   const apiKey = getClientGeminiApiKey();
   if (!apiKey) {
@@ -565,7 +624,8 @@ ${userMessage}
 
 Если пользователь просит пересчитать или скорректировать какие-либо финансовые параметры (инвестиции, выручку, штат, срок запуска, OPEX) на основе новых данных или сценария, заполни объект suggestedOverrides (иначе оставь applyOverrides = false).`;
 
-  const { text: rawText } = await generateWithRetryAndFallback(
+  const { text: rawText, modelUsed, modelId, usedFallbackModel } =
+    await generateWithRetryAndFallback(
     ai,
     {
       contents: prompt,
@@ -617,6 +677,9 @@ ${userMessage}
   return {
     reply: parsed.reply || '',
     suggestedOverrides,
+    modelUsed,
+    modelId,
+    usedFallbackModel,
   };
 }
 
@@ -692,6 +755,9 @@ export async function chatWithAnalystSmart(
 ): Promise<{
   reply: string;
   suggestedOverrides: Partial<FinancialInputs> | null;
+  modelUsed: string;
+  modelId: string;
+  usedFallbackModel: boolean;
   usedFallbackNoServerKey: boolean;
 }> {
   const runtime = getRuntimeServerInfo();
@@ -723,12 +789,18 @@ export async function chatWithAnalystSmart(
           assistantMessage?: {
             content?: string;
             suggestedOverrides?: Partial<FinancialInputs> | null;
+            modelUsed?: string;
+            modelId?: string;
+            usedFallbackModel?: boolean;
           };
         };
         if (data?.ok && data.assistantMessage?.content) {
           return {
             reply: data.assistantMessage.content,
             suggestedOverrides: data.assistantMessage.suggestedOverrides ?? null,
+            modelUsed: data.assistantMessage.modelUsed || 'Gemini',
+            modelId: data.assistantMessage.modelId || '',
+            usedFallbackModel: Boolean(data.assistantMessage.usedFallbackModel),
             usedFallbackNoServerKey: false,
           };
         }
