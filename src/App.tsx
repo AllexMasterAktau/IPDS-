@@ -11,6 +11,7 @@ import { TopBarControls } from './components/TopBarControls';
 import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
 import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
+import { clientAnalyzeProject } from './utils/clientGemini';
 import type {
   AdminUserSummary,
   CurrencyCode,
@@ -188,31 +189,45 @@ export default function App() {
   const fetchLiveFxRates = useCallback(async () => {
     setFxLoading(true);
     try {
-      const res = await fetch('/api/fx-rates');
-      const data = (await res.json()) as Partial<FxRatesState>;
-      if (res.ok && data.rates) {
-        const nextFx: FxRatesState = {
-          rates: {
-            USD: 1,
-            RUB: Number(data.rates.RUB) || DEFAULT_FX_RATES.RUB,
-            KZT: Number(data.rates.KZT) || DEFAULT_FX_RATES.KZT,
-          },
-          source: data.source === 'live' ? 'live' : 'fallback',
-          updatedAt: data.updatedAt || new Date().toISOString(),
-          provider: data.provider,
-        };
-        setFxState(nextFx);
-        broadcastPrefs({ fxState: nextFx });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch('https://open.er-api.com/v6/latest/USD', {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        const rub = Number(data?.rates?.RUB);
+        const kzt = Number(data?.rates?.KZT);
+        if (Number.isFinite(rub) && rub > 0 && Number.isFinite(kzt) && kzt > 0) {
+          const nextFx: FxRatesState = {
+            rates: {
+              USD: 1,
+              RUB: Number(rub.toFixed(2)),
+              KZT: Number(kzt.toFixed(2)),
+            },
+            source: 'live',
+            updatedAt: data.time_last_update_utc
+              ? new Date(data.time_last_update_utc).toISOString()
+              : new Date().toISOString(),
+            provider: 'open.er-api.com',
+          };
+          setFxState(nextFx);
+          broadcastPrefs({ fxState: nextFx });
+          setFxLoading(false);
+          return;
+        }
       }
     } catch {
-      setFxState((prev) => ({
-        ...prev,
-        source: prev.source === 'manual' ? 'manual' : 'fallback',
-        updatedAt: prev.updatedAt || new Date().toISOString(),
-      }));
-    } finally {
-      setFxLoading(false);
+      // fallback
     }
+
+    setFxState((prev) => ({
+      ...prev,
+      source: prev.source === 'manual' ? 'manual' : 'fallback',
+      updatedAt: prev.updatedAt || new Date().toISOString(),
+    }));
+    setFxLoading(false);
   }, [broadcastPrefs]);
 
   // Автоматическая загрузка актуального курса FX при старте (если не включён ручной курс)
@@ -652,40 +667,15 @@ export default function App() {
     setAnalyzingProjectId(targetProject.id);
     setGlobalError(null);
     try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(targetProject.id)}/analyze`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(session?.sessionToken
-              ? { Authorization: `Bearer ${session.sessionToken}` }
-              : {}),
-          },
-          body: JSON.stringify({ project: targetProject, language }),
-        }
-      );
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(
-          language === 'en'
-            ? 'Server returned non-JSON response. Please check Gemini API key configuration.'
-            : 'Сервер вернул невалидный ответ. Проверьте конфигурацию GEMINI_API_KEY на сервере.'
-        );
-      }
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data.error ||
-            (language === 'en'
-              ? 'Failed to run project analysis.'
-              : 'Не удалось выполнить анализ проекта.')
-        );
-      }
-      upsertLocalProject(data.project);
-      setActiveProjectId(data.project.id);
+      const analysis = await clientAnalyzeProject(targetProject, language);
+      const updated: ProjectRecord = {
+        ...targetProject,
+        analysis,
+        manualOverrides: {},
+        updatedAt: new Date().toISOString(),
+      };
+      upsertLocalProject(updated);
+      setActiveProjectId(updated.id);
       setActiveTab('report');
     } catch (err) {
       setGlobalError(

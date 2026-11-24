@@ -33,6 +33,7 @@ import {
   parseLocalFileToDigest,
   validateLocalFilesBatch,
 } from '../utils/localFileParser';
+import { clientChatWithAnalyst } from '../utils/clientGemini';
 
 interface AnalystDialogueProps {
   language: Language;
@@ -114,35 +115,43 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       : undefined;
 
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
-        body: JSON.stringify({
-          project,
-          message: message.trim(),
-          newDocuments: pendingDocs,
-          currentEffectiveInputs,
-          language,
-        }),
-      });
+      const aiResponse = await clientChatWithAnalyst(
+        project,
+        message.trim(),
+        pendingDocs,
+        currentEffectiveInputs,
+        language
+      );
 
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(
-          language === 'en'
-            ? 'Server returned non-JSON response. Please check Gemini API key configuration.'
-            : 'Сервер вернул невалидный ответ. Проверьте конфигурацию GEMINI_API_KEY на сервере.'
-        );
-      }
+      const now = new Date().toISOString();
+      const userMsgRecord = {
+        id: `msg_u_${Date.now()}`,
+        role: 'user' as const,
+        content: message.trim(),
+        attachments: pendingDocs.map((d) => ({
+          name: d.name,
+          fileType: d.fileType,
+          sizeBytes: d.sizeBytes,
+        })),
+        createdAt: now,
+      };
 
-      const data = await res.json();
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || data.message || 'Failed to get AI analyst response.');
-      }
-      onProjectUpdated(data.project);
+      const assistantMsgRecord = {
+        id: `msg_a_${Date.now() + 1}`,
+        role: 'assistant' as const,
+        content: aiResponse.reply,
+        suggestedOverrides: aiResponse.suggestedOverrides,
+        createdAt: new Date(Date.now() + 10).toISOString(),
+      };
+
+      const updatedProject: ProjectRecord = {
+        ...project,
+        documents: [...project.documents, ...pendingDocs],
+        dialogue: [...project.dialogue, userMsgRecord, assistantMsgRecord],
+        updatedAt: now,
+      };
+
+      onProjectUpdated(updatedProject);
       setMessage('');
       setPendingDocs([]);
     } catch (err) {
