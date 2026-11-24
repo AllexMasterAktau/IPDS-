@@ -48,6 +48,7 @@ interface AnalystDialogueProps {
   onApplySuggestedOverrides: (overrides: Partial<FinancialInputs>) => void;
   onOpenReportTab: () => void;
   onMissingApiKey?: () => void;
+  onFallbackToClientKey?: () => void;
 }
 
 export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
@@ -63,6 +64,7 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
   onApplySuggestedOverrides,
   onOpenReportTab,
   onMissingApiKey,
+  onFallbackToClientKey,
 }) => {
   const t = getTranslations(language);
   const [message, setMessage] = useState('');
@@ -128,6 +130,10 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
         sessionToken,
         serverGeminiConfigured
       );
+
+      if (aiResponse.usedFallbackNoServerKey) {
+        onFallbackToClientKey?.();
+      }
 
       const now = new Date().toISOString();
       const userMsgRecord = {

@@ -31,6 +31,173 @@ export function setClientGeminiApiKey(key: string) {
   } catch {}
 }
 
+const PRIMARY_MODEL = 'gemini-3.8-flash';
+const MODEL_CHAIN = [
+  PRIMARY_MODEL,
+  'gemini-4-hydrogen',
+  'gemini-3.1-flash-lite',
+] as const;
+const PRIMARY_RETRY_DELAYS_MS = [2000, 4000];
+const FALLBACK_RETRY_DELAYS_MS = [2000];
+
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  'gemini-3.8-flash': 'Gemini 3.8 Flash',
+  'gemini-4-hydrogen': 'Gemini 4 Flash',
+  'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorText(err: unknown): string {
+  if (err instanceof Error) return err.message || '';
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+function getErrorStatus(err: unknown): number | null {
+  if (err && typeof err === 'object') {
+    const anyErr = err as { status?: unknown; code?: unknown };
+    if (typeof anyErr.status === 'number') return anyErr.status;
+    if (typeof anyErr.code === 'number') return anyErr.code;
+  }
+  const msg = getErrorText(err);
+  const match =
+    msg.match(/"code"\s*:\s*(\d{3})/) ||
+    msg.match(/\b(429|503|404|403|401|400)\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function isTransientOverloadError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 429 || status === 503) return true;
+  const msg = getErrorText(err).toLowerCase();
+  return (
+    msg.includes('unavailable') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded') ||
+    msg.includes('too many requests') ||
+    msg.includes('service unavailable') ||
+    msg.includes('rate limit')
+  );
+}
+
+function isModelNotFoundError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 404) return true;
+  const msg = getErrorText(err).toLowerCase();
+  return (
+    msg.includes('not_found') ||
+    msg.includes('no longer available') ||
+    msg.includes('is not found')
+  );
+}
+
+function isApiKeyError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 401 || status === 403) return true;
+  const msg = getErrorText(err).toLowerCase();
+  return (
+    msg.includes('api_key_invalid') ||
+    msg.includes('api key not valid') ||
+    msg.includes('permission_denied')
+  );
+}
+
+export function formatGeminiUserError(
+  err: unknown,
+  language: Language = 'ru'
+): string {
+  if (err instanceof MissingGeminiKeyError) {
+    return err.message;
+  }
+  if (isTransientOverloadError(err)) {
+    return language === 'en'
+      ? 'AI service is temporarily overloaded. Please try again in 10–15 seconds.'
+      : 'Сервис ИИ временно перегружен, попробуйте повторить запрос через 10–15 секунд.';
+  }
+  if (isApiKeyError(err)) {
+    return language === 'en'
+      ? 'Invalid or rejected Gemini API key. Please check your key settings.'
+      : 'Недействительный или отклонённый ключ Gemini API. Проверьте настройки ключа.';
+  }
+
+  const raw = getErrorText(err).trim();
+  if (!raw || raw.startsWith('{') || raw.includes('"error"')) {
+    return language === 'en'
+      ? 'Failed to get a response from the AI service. Please try again.'
+      : 'Не удалось получить ответ от сервиса ИИ. Повторите попытку.';
+  }
+  return raw;
+}
+
+async function generateWithRetryAndFallback(
+  ai: GoogleGenAI,
+  params: {
+    contents: string;
+    config: Record<string, unknown>;
+  },
+  language: Language
+): Promise<{ text: string; modelUsed: string }> {
+  let lastError: unknown = null;
+
+  for (let mIdx = 0; mIdx < MODEL_CHAIN.length; mIdx += 1) {
+    const model = MODEL_CHAIN[mIdx];
+    const delays =
+      mIdx === 0 ? PRIMARY_RETRY_DELAYS_MS : FALLBACK_RETRY_DELAYS_MS;
+
+    for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config as never,
+        });
+        const rawText = (response.text ?? '').trim();
+        if (!rawText) {
+          throw new Error(
+            language === 'en'
+              ? 'The model returned an empty response. Please try again.'
+              : 'Модель вернула пустой ответ. Повторите попытку.'
+          );
+        }
+        return {
+          text: rawText,
+          modelUsed: MODEL_DISPLAY_NAMES[model] || model,
+        };
+      } catch (err) {
+        lastError = err;
+
+        if (isApiKeyError(err)) {
+          throw new Error(formatGeminiUserError(err, language));
+        }
+
+        if (isModelNotFoundError(err)) {
+          break;
+        }
+
+        if (isTransientOverloadError(err)) {
+          if (attempt < delays.length) {
+            await sleep(delays[attempt]);
+            continue;
+          }
+          break;
+        }
+
+        throw new Error(formatGeminiUserError(err, language));
+      }
+    }
+  }
+
+  throw new Error(formatGeminiUserError(lastError, language));
+}
+
 function buildDocumentsContext(documents: LocalDocumentDigest[]): string {
   if (!documents.length) {
     return 'Пользователь не прикрепил локальные документы. Проведи оценку на базе названия, региона, отрасли и комментария к проекту, явно указав допущения.';
@@ -85,104 +252,102 @@ ${buildDocumentsContext(project.documents)}
 2. Обеспечь математическую согласованность: сумма costStructure.amount должна примерно соответствовать investmentAmount, сумма costStructure.sharePct должна быть близка к 100%, а monthlyRevenue и monthlyOpex должны отражать реалистичную экономику для региона «${regionLabel}».
 3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: prompt,
-    config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          executiveSummary: { type: Type.STRING },
-          baselineInputs: {
-            type: Type.OBJECT,
-            properties: {
-              investmentAmount: { type: Type.NUMBER },
-              monthlyRevenue: { type: Type.NUMBER },
-              headcount: { type: Type.INTEGER },
-              launchMonths: { type: Type.INTEGER },
-              monthlyOpex: { type: Type.NUMBER },
-              workingCapitalReservePct: { type: Type.NUMBER },
-            },
-            required: [
-              'investmentAmount',
-              'monthlyRevenue',
-              'headcount',
-              'launchMonths',
-              'monthlyOpex',
-              'workingCapitalReservePct',
-            ],
-          },
-          payrollPerEmployeeMonthly: { type: Type.NUMBER },
-          costStructure: {
-            type: Type.ARRAY,
-            items: {
+  const { text: rawText, modelUsed } = await generateWithRetryAndFallback(
+    ai,
+    {
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            executiveSummary: { type: Type.STRING },
+            baselineInputs: {
               type: Type.OBJECT,
               properties: {
-                category: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                sharePct: { type: Type.NUMBER },
-                note: { type: Type.STRING },
-              },
-              required: ['category', 'amount', 'sharePct', 'note'],
-            },
-          },
-          revenueDrivers: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          unitEconomicsSummary: { type: Type.STRING },
-          risks: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                dimension: { type: Type.STRING },
-                dimensionLabel: { type: Type.STRING },
-                title: { type: Type.STRING },
-                severity: { type: Type.STRING },
-                description: { type: Type.STRING },
-                mitigation: { type: Type.STRING },
+                investmentAmount: { type: Type.NUMBER },
+                monthlyRevenue: { type: Type.NUMBER },
+                headcount: { type: Type.INTEGER },
+                launchMonths: { type: Type.INTEGER },
+                monthlyOpex: { type: Type.NUMBER },
+                workingCapitalReservePct: { type: Type.NUMBER },
               },
               required: [
-                'dimension',
-                'dimensionLabel',
-                'title',
-                'severity',
-                'description',
-                'mitigation',
+                'investmentAmount',
+                'monthlyRevenue',
+                'headcount',
+                'launchMonths',
+                'monthlyOpex',
+                'workingCapitalReservePct',
               ],
             },
+            payrollPerEmployeeMonthly: { type: Type.NUMBER },
+            costStructure: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  category: { type: Type.STRING },
+                  amount: { type: Type.NUMBER },
+                  sharePct: { type: Type.NUMBER },
+                  note: { type: Type.STRING },
+                },
+                required: ['category', 'amount', 'sharePct', 'note'],
+              },
+            },
+            revenueDrivers: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            unitEconomicsSummary: { type: Type.STRING },
+            risks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  dimension: { type: Type.STRING },
+                  dimensionLabel: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  severity: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  mitigation: { type: Type.STRING },
+                },
+                required: [
+                  'dimension',
+                  'dimensionLabel',
+                  'title',
+                  'severity',
+                  'description',
+                  'mitigation',
+                ],
+              },
+            },
+            assumptions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            preLaunchSteps: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
           },
-          assumptions: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          preLaunchSteps: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
+          required: [
+            'executiveSummary',
+            'baselineInputs',
+            'payrollPerEmployeeMonthly',
+            'costStructure',
+            'revenueDrivers',
+            'unitEconomicsSummary',
+            'risks',
+            'assumptions',
+            'preLaunchSteps',
+          ],
         },
-        required: [
-          'executiveSummary',
-          'baselineInputs',
-          'payrollPerEmployeeMonthly',
-          'costStructure',
-          'revenueDrivers',
-          'unitEconomicsSummary',
-          'risks',
-          'assumptions',
-          'preLaunchSteps',
-        ],
       },
     },
-  });
-
-  const rawText = (response.text ?? '').trim();
-  if (!rawText) {
-    throw new Error('Модель вернула пустой ответ. Повторите попытку анализа.');
-  }
+    language
+  );
 
   const parsed = JSON.parse(rawText) as any;
   const normalizedRisks = (parsed.risks ?? []).map((risk: any, index: number) => ({
@@ -220,7 +385,7 @@ ${buildDocumentsContext(project.documents)}
     assumptions: parsed.assumptions ?? [],
     preLaunchSteps: parsed.preLaunchSteps ?? [],
     generatedAt: new Date().toISOString(),
-    modelUsed: 'Gemini 3.8 Flash',
+    modelUsed,
   };
 }
 
@@ -298,32 +463,30 @@ ${userMessage}
 
 Если пользователь просит пересчитать или скорректировать какие-либо финансовые параметры (инвестиции, выручку, штат, срок запуска, OPEX) на основе новых данных или сценария, заполни объект suggestedOverrides (иначе оставь applyOverrides = false).`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: prompt,
-    config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          reply: { type: Type.STRING },
-          applyOverrides: { type: Type.BOOLEAN },
-          investmentAmount: { type: Type.NUMBER },
-          monthlyRevenue: { type: Type.NUMBER },
-          headcount: { type: Type.INTEGER },
-          launchMonths: { type: Type.INTEGER },
-          monthlyOpex: { type: Type.NUMBER },
+  const { text: rawText } = await generateWithRetryAndFallback(
+    ai,
+    {
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            reply: { type: Type.STRING },
+            applyOverrides: { type: Type.BOOLEAN },
+            investmentAmount: { type: Type.NUMBER },
+            monthlyRevenue: { type: Type.NUMBER },
+            headcount: { type: Type.INTEGER },
+            launchMonths: { type: Type.INTEGER },
+            monthlyOpex: { type: Type.NUMBER },
+          },
+          required: ['reply', 'applyOverrides'],
         },
-        required: ['reply', 'applyOverrides'],
       },
     },
-  });
-
-  const rawText = (response.text ?? '').trim();
-  if (!rawText) {
-    throw new Error('Аналитик не смог сформировать ответ. Повторите запрос.');
-  }
+    language
+  );
 
   const parsed = JSON.parse(rawText) as any;
   let suggestedOverrides: Partial<FinancialInputs> | null = null;
@@ -410,11 +573,14 @@ export async function analyzeProjectSmart(
       }
 
       throw new Error(
-        data.error ||
-          data.message ||
-          (language === 'en'
-            ? 'Failed to run project analysis.'
-            : 'Не удалось выполнить анализ проекта.')
+        formatGeminiUserError(
+          data.error ||
+            data.message ||
+            (language === 'en'
+              ? 'Failed to run project analysis.'
+              : 'Не удалось выполнить анализ проекта.'),
+          language
+        )
       );
     } catch (err) {
       if (err instanceof MissingGeminiKeyError) {
@@ -425,7 +591,7 @@ export async function analyzeProjectSmart(
         const analysis = await clientAnalyzeProject(project, language);
         return { analysis, usedFallbackNoServerKey: true };
       }
-      throw err;
+      throw new Error(formatGeminiUserError(err, language));
     }
   }
 
@@ -504,11 +670,14 @@ export async function chatWithAnalystSmart(
       }
 
       throw new Error(
-        data.error ||
-          data.message ||
-          (language === 'en'
-            ? 'Failed to get analyst response.'
-            : 'Не удалось получить ответ аналитика.')
+        formatGeminiUserError(
+          data.error ||
+            data.message ||
+            (language === 'en'
+              ? 'Failed to get analyst response.'
+              : 'Не удалось получить ответ аналитика.'),
+          language
+        )
       );
     } catch (err) {
       if (err instanceof MissingGeminiKeyError) {
@@ -524,7 +693,7 @@ export async function chatWithAnalystSmart(
         );
         return { ...resClient, usedFallbackNoServerKey: true };
       }
-      throw err;
+      throw new Error(formatGeminiUserError(err, language));
     }
   }
 

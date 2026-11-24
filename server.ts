@@ -2,7 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { analyzeProjectWithGemini, chatWithAnalystGemini } from './server/gemini';
+import {
+  analyzeProjectWithGemini,
+  chatWithAnalystGemini,
+  formatGeminiUserError,
+  isTransientOverloadError,
+} from './server/gemini';
 import {
   ADMIN_EMAIL,
   createOtpForEmail,
@@ -724,8 +729,14 @@ async function startServer() {
 
       return res.json({ ok: true, project: saved, analysis });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка выполнения анализа ИИ';
-      return res.status(500).json({ ok: false, error: message });
+      const lang: Language = req.body?.language === 'en' ? 'en' : 'ru';
+      const isOverload = isTransientOverloadError(err);
+      const message = formatGeminiUserError(err, lang);
+      return res.status(isOverload ? 503 : 500).json({
+        ok: false,
+        ...(isOverload ? { code: 'AI_OVERLOADED' } : {}),
+        error: message,
+      });
     }
   });
 
@@ -821,8 +832,14 @@ async function startServer() {
         assistantMessage: assistantMsgRecord,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка диалога с аналитиком ИИ';
-      return res.status(500).json({ ok: false, error: message });
+      const lang: Language = req.body?.language === 'en' ? 'en' : 'ru';
+      const isOverload = isTransientOverloadError(err);
+      const message = formatGeminiUserError(err, lang);
+      return res.status(isOverload ? 503 : 500).json({
+        ok: false,
+        ...(isOverload ? { code: 'AI_OVERLOADED' } : {}),
+        error: message,
+      });
     }
   });
 

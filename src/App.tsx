@@ -278,30 +278,7 @@ export default function App() {
   const isAdmin = Boolean(isAuthenticated && activeUserEmail === ADMIN_EMAIL);
   const adminGasConfigured = Boolean(gasWebhookUrl);
 
-  // Проверка наличия серверного GEMINI_API_KEY (без обязательного ручного ввода ключа в браузере)
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/health')
-      .then(async (res) => {
-        if (!res.ok) return { geminiConfigured: false };
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) return { geminiConfigured: false };
-        return (await res.json()) as { geminiConfigured?: boolean };
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setServerGeminiConfigured(Boolean(data?.geminiConfigured));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setServerGeminiConfigured(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+
 
   const adminProjects = useMemo(
     () =>
@@ -959,6 +936,7 @@ export default function App() {
                 setForceShowKeyInput(true);
                 setServerGeminiConfigured(false);
               }}
+              onFallbackToClientKey={() => setServerGeminiConfigured(false)}
             />
           )}
 
