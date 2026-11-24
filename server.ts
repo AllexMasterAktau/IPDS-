@@ -674,12 +674,20 @@ async function startServer() {
   // --------------------------------------------------------------------------
   app.post('/api/projects/:id/analyze', async (req, res) => {
     try {
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+      if (!apiKey) {
+        return res.status(400).json({
+          ok: false,
+          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.',
+        });
+      }
+
       const existing = getProjectById(req.params.id);
       const clientSnapshot = req.body?.project as ProjectRecord | undefined;
       const targetProject = existing || clientSnapshot;
 
       if (!targetProject) {
-        return res.status(404).json({ error: 'Проект не найден.' });
+        return res.status(404).json({ ok: false, error: 'Проект не найден.' });
       }
 
       const token = extractBearerToken(req);
@@ -690,7 +698,7 @@ async function startServer() {
           (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
             !isAdminEmail(sessionData.email)))
       ) {
-        return res.status(403).json({ error: 'Доступ к проекту не подтверждён.' });
+        return res.status(403).json({ ok: false, error: 'Доступ к проекту не подтверждён.' });
       }
 
       const mergedProject: ProjectRecord = {
@@ -708,21 +716,29 @@ async function startServer() {
         manualOverrides: {},
       });
 
-      return res.json({ project: saved, analysis });
+      return res.json({ ok: true, project: saved, analysis });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка выполнения анализа ИИ';
-      return res.status(500).json({ error: message });
+      return res.status(500).json({ ok: false, error: message });
     }
   });
 
   app.post('/api/projects/:id/chat', async (req, res) => {
     try {
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+      if (!apiKey) {
+        return res.status(400).json({
+          ok: false,
+          error: 'GEMINI_API_KEY или GOOGLE_API_KEY не настроен на сервере. Добавьте ключ в Settings > Secrets в Google AI Studio.',
+        });
+      }
+
       const existing = getProjectById(req.params.id);
       const clientSnapshot = req.body?.project as ProjectRecord | undefined;
       const targetProject = existing || clientSnapshot;
 
       if (!targetProject) {
-        return res.status(404).json({ error: 'Проект не найден.' });
+        return res.status(404).json({ ok: false, error: 'Проект не найден.' });
       }
 
       const token = extractBearerToken(req);
@@ -733,7 +749,7 @@ async function startServer() {
           (normalizeEmail(sessionData.email) !== normalizeEmail(existing.email) &&
             !isAdminEmail(sessionData.email)))
       ) {
-        return res.status(403).json({ error: 'Доступ к проекту не подтверждён.' });
+        return res.status(403).json({ ok: false, error: 'Доступ к проекту не подтверждён.' });
       }
 
       const userMessage = String(req.body?.message ?? '').trim();
@@ -741,7 +757,7 @@ async function startServer() {
       const currentEffectiveInputs = req.body?.currentEffectiveInputs;
 
       if (!userMessage && newDocuments.length === 0) {
-        return res.status(400).json({ error: 'Введите вопрос или прикрепите локальный документ.' });
+        return res.status(400).json({ ok: false, error: 'Введите вопрос или прикрепите локальный документ.' });
       }
 
       const promptText =
@@ -787,12 +803,13 @@ async function startServer() {
       });
 
       return res.json({
+        ok: true,
         project: saved,
         assistantMessage: assistantMsgRecord,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка диалога с аналитиком ИИ';
-      return res.status(500).json({ error: message });
+      return res.status(500).json({ ok: false, error: message });
     }
   });
 

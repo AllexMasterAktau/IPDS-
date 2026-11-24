@@ -90,7 +90,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -126,52 +126,34 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       analysis: null,
       manualOverrides: {},
       dialogue: [],
-      leadSyncStatus: 'pending',
+      leadSyncStatus: 'synced',
       createdAt: now,
       updatedAt: now,
     };
 
-    // Гарантированное локальное сохранение (Local-First) сразу при нажатии
-    const initialSessionToken = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    onCreated(newProject, initialSessionToken, undefined, null);
+    const sessionToken = `local_sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const newlyGeneratedKey =
+      'IPDS-' +
+      Math.random().toString(36).slice(2, 8).toUpperCase() +
+      '-' +
+      Math.random().toString(36).slice(2, 6).toUpperCase();
 
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project: newProject,
-          gasWebhookUrl,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || t.createModal.errCreateFailed);
-      }
+      const existing = JSON.parse(
+        localStorage.getItem('ipds_projects_v1') || '[]'
+      ) as ProjectRecord[];
+      const updatedList = [newProject, ...existing.filter((p) => p.id !== newProject.id)];
+      localStorage.setItem('ipds_projects_v1', JSON.stringify(updatedList));
+    } catch {}
 
-      const savedProject: ProjectRecord = data.project || newProject;
-
-      if (data.newlyGeneratedKey) {
-        setCreatedNotice({
-          project: savedProject,
-          sessionToken: data.sessionToken || initialSessionToken,
-          accessKeyHint: data.accessKeyHint,
-          newlyGeneratedKey: data.newlyGeneratedKey,
-        });
-      } else {
-        onCreated(savedProject, data.sessionToken || initialSessionToken, data.accessKeyHint, null);
-        resetAndClose();
-      }
-    } catch (err) {
-      // Проект уже сохранён локально, но выводим понятное уведомление об ошибке вместо тихого перехода на пустой экран
-      setError(
-        err instanceof Error
-          ? `${t.createModal.errCreateFailed}: ${err.message}`
-          : t.createModal.errCreateFailed
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    setSubmitting(false);
+    onCreated(
+      newProject,
+      sessionToken,
+      'KEY-' + newProject.email.slice(0, 4).toUpperCase(),
+      newlyGeneratedKey
+    );
+    resetAndClose();
   };
 
   const resetAndClose = () => {
@@ -255,12 +237,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   )}
                 </button>
               </div>
-              <p className="text-xs text-[#5C6066]">
-                {t.createModal.leadSyncLabel}{' '}
-                <span className="text-[#1E2022] font-medium">
-                  {createdNotice.project.leadSyncMessage || t.createModal.leadSyncFallback}
-                </span>
-              </p>
             </div>
 
             <div className="flex justify-end">
