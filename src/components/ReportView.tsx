@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -27,11 +27,16 @@ import {
   formatMoney,
   getCurrencySymbol,
   getEffectiveInputs,
+  getEffectiveRecommendations,
   getFxConversionFactor,
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
-import { exportReportElementToPdf } from '../utils/pdfExport';
+import {
+  exportReportToPdf,
+  PdfFontUnavailableError,
+  preloadPdfFonts,
+} from '../utils/pdfExport';
 import { FinancialInfographics } from './FinancialInfographics';
 
 interface ReportViewProps {
@@ -93,6 +98,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const [pdfError, setPdfError] = useState<string | null>(null);
   const pdfSheetRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    void preloadPdfFonts();
+  }, []);
+
   const analysis = project.analysis;
   const baseCurrency = normalizeCurrencyCode(analysis?.currencyCode || project.currencyCode);
   const fxFactor = getFxConversionFactor(baseCurrency, displayCurrency, fxRates);
@@ -121,7 +130,12 @@ export const ReportView: React.FC<ReportViewProps> = ({
     }));
   }, [analysis, fxFactor]);
 
-  if (!analysis || !effectiveInputs || !metrics) {
+  const recommendations = useMemo(() => {
+    if (!analysis || !metrics) return null;
+    return getEffectiveRecommendations(analysis, metrics, language);
+  }, [analysis, metrics, language]);
+
+  if (!analysis || !effectiveInputs || !metrics || !recommendations) {
     return (
       <div className="w-full max-w-[1600px] mx-auto py-12 px-4 sm:px-8 lg:px-10">
         <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-8 text-center space-y-4">
@@ -186,15 +200,34 @@ export const ReportView: React.FC<ReportViewProps> = ({
   };
 
   const handleDownloadPdf = async () => {
-    if (!pdfSheetRef.current) return;
+    if (!analysis || !effectiveInputs || !metrics) return;
     setExportingPdf(true);
     setPdfError(null);
     try {
-      await exportReportElementToPdf(pdfSheetRef.current, project.projectName);
+      await exportReportToPdf({
+        project,
+        analysis,
+        effectiveInputs,
+        metrics,
+        convertedCostStructure,
+        language,
+        displayCurrency,
+        displaySymbol,
+        hasOverrides,
+      });
     } catch (err) {
-      setPdfError(
-        err instanceof Error ? err.message : 'PDF generation error'
-      );
+      if (err instanceof PdfFontUnavailableError) {
+        // Если шрифты кириллицы не удалось встроить, используем надёжный печатный контур (Save as PDF)
+        window.print();
+      } else {
+        setPdfError(
+          err instanceof Error
+            ? err.message
+            : language === 'en'
+            ? 'PDF generation error'
+            : 'Ошибка формирования PDF-документа'
+        );
+      }
     } finally {
       setExportingPdf(false);
     }
@@ -609,6 +642,60 @@ export const ReportView: React.FC<ReportViewProps> = ({
         </div>
       </section>
 
+      {/* КОНТУР 3: Рекомендации */}
+      <section className="no-print space-y-3.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#E5E0D5] pb-1.5">
+          <h3 className="text-base sm:text-lg font-bold text-[#1E2022]">
+            {t.report.contour3Title}
+          </h3>
+          <span className="text-xs text-[#5C6066]">{t.report.contour3Meta}</span>
+        </div>
+
+        <div className="rounded-xl bg-[#FFFFFF] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-1.5">
+          <div className="text-xs font-semibold text-[#9A6E2E]">
+            {t.report.recConclusionTitle}
+          </div>
+          <p className="text-xs sm:text-[13px] text-[#1E2022] leading-snug">
+            {recommendations.analystConclusion}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
+            <h4 className="text-sm font-semibold text-[#1E2022] leading-snug">
+              {t.report.recMitigationTitle}
+            </h4>
+            <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+              {recommendations.riskMitigationMeasures.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
+            <h4 className="text-sm font-semibold text-[#1E2022] leading-snug">
+              {t.report.recCrisisTitle}
+            </h4>
+            <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
+              {recommendations.crisisAndBottleneckPlan.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
+            <h4 className="text-sm font-semibold text-[#1E2022] leading-snug">
+              {t.report.recGrowthTitle}
+            </h4>
+            <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+              {recommendations.growthPlanAndMetrics.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* ========================================================================
           ЧИСТАЯ ВЕРСИЯ ДЛЯ PDF-ЭКСПОРТА И ПЕЧАТИ (С ЛОГОТИПОМ, ВАЛЮТОЙ И ОБНОВЛЁННЫМИ ЦИФРАМИ)
           ======================================================================== */}
@@ -767,6 +854,43 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 <ul className="list-decimal pl-4 space-y-1 text-slate-700">
                   {analysis.preLaunchSteps.map((s, i) => (
                     <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Контур 3 в печатной версии */}
+          <div className="space-y-3 pt-2">
+            <h2 className="text-base font-bold border-b border-slate-200 pb-1.5">
+              {t.report.contour3Title}
+            </h2>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1 text-xs">
+              <div className="font-semibold text-amber-800">{t.report.recConclusionTitle}</div>
+              <p className="text-slate-700 leading-snug">{recommendations.analystConclusion}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-slate-900">{t.report.recMitigationTitle}</div>
+                <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                  {recommendations.riskMitigationMeasures.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-slate-900">{t.report.recCrisisTitle}</div>
+                <ul className="list-decimal pl-4 space-y-1 text-slate-700">
+                  {recommendations.crisisAndBottleneckPlan.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-slate-900">{t.report.recGrowthTitle}</div>
+                <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                  {recommendations.growthPlanAndMetrics.map((g, i) => (
+                    <li key={i}>{g}</li>
                   ))}
                 </ul>
               </div>

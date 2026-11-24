@@ -80,9 +80,9 @@ export const TRANSLATIONS = {
             'Терминал считывает PDF, TXT, CSV, форматы Microsoft Office (DOC, DOCX, RTF, XLS, XLSX, XLSM, PPT, PPTX) и описания прямо на вашем устройстве (Local-First). Исходные файлы не покидают ПК — в терминал передаётся только текстовый контекст.',
         },
         {
-          title: '02. Два контура: «Цифры» и «Риски»',
+          title: '02. Три контура: «Цифры», «Риски» и «Рекомендации»',
           description:
-            'Контур экономики формирует CAPEX, OPEX, выручку, штат и срок окупаемости с графиками. Контур рисков оценивает рыночные, правовые, кадровые и региональные ограничения.',
+            'Контур экономики формирует CAPEX, OPEX, выручку, штат и срок окупаемости с графиками. Контур рисков оценивает ограничения, а контур рекомендаций даёт заключение, меры защиты, антикризисный план и контрольные KPI.',
         },
         {
           title: '03. Интерактивный пересчёт и выгрузка в PDF',
@@ -97,7 +97,7 @@ export const TRANSLATIONS = {
       ],
       bottomTitle: 'Готовы оценить новый инвестиционный проект или бизнес-идею?',
       bottomDesc:
-        'Укажите контактные данные, регион и прикрепите локальные файлы — система подготовит паспорт и запустит двухконтурный разбор.',
+        'Укажите контактные данные, регион и прикрепите локальные файлы — система подготовит паспорт и запустит трёхконтурный разбор.',
     },
     projects: {
       emptyTitle: 'У вас пока нет сохранённых проектов',
@@ -288,7 +288,13 @@ export const TRANSLATIONS = {
       chatMemoryNote: 'Память сохраняется по E-mail',
       chatEmptyTitle: 'История диалога по проекту пока пуста',
       chatEmptyDesc:
-        'Нажмите «Сделать анализ проекта» для базового двухконтурного разбора или задайте вопрос аналитику, прикрепив дополнительные локальные файлы.',
+        'Нажмите «Сделать анализ проекта» для базового трёхконтурного разбора («Цифры», «Риски», «Рекомендации») или задайте вопрос аналитику, прикрепив дополнительные локальные файлы.',
+      contoursSummaryTitle: 'Три контура анализа по проекту',
+      contourTabNumbers: '01. Цифры',
+      contourTabRisks: '02. Риски',
+      contourTabRecommendations: '03. Рекомендации',
+      showContours: 'Показать контуры',
+      hideContours: 'Свернуть контуры',
       analystName: 'Аналитик IPDS',
       investments: 'Инвестиции',
       revenueMo: 'Выручка/мес',
@@ -307,7 +313,7 @@ export const TRANSLATIONS = {
     report: {
       notReadyTitle: 'Отчёт по проекту «{name}» ещё не сформирован',
       notReadyDesc:
-        'Запустите двухконтурный анализ на базе паспорта проекта и локально извлечённых документов, чтобы получить финансовую модель, графики окупаемости и карту рисков.',
+        'Запустите трёхконтурный анализ на базе паспорта проекта и локально извлечённых документов, чтобы получить финансовую модель, карту рисков и рекомендации.',
       runAnalyze: 'Сделать анализ проекта',
       runningAnalyze: 'Выполняется анализ ИИ...',
       notFoundTitle: 'Проект не найден',
@@ -367,6 +373,12 @@ export const TRANSLATIONS = {
       mitigationPrefix: 'Меры снижения:',
       assumptionsTitle: 'Ключевые допущения модели',
       preLaunchTitle: 'Приоритетные шаги до запуска',
+      contour3Title: '03. Контур «Рекомендации»',
+      contour3Meta: 'На базе данных проекта, контура «Цифры» и контура «Риски»',
+      recConclusionTitle: 'Итоговое заключение аналитика',
+      recMitigationTitle: 'Меры по устранению и снижению рисков',
+      recCrisisTitle: 'План выхода из кризисных и узких точек',
+      recGrowthTitle: 'План дальнейшего развития и ключевые контрольные метрики',
       pdfMemorandum: 'IPDS Терминал · Инвестиционный меморандум',
       pdfRegion: 'Регион',
       pdfInitiator: 'Инициатор',
@@ -481,9 +493,9 @@ export const TRANSLATIONS = {
             'The terminal reads PDF, TXT, CSV, Microsoft Office formats (DOC, DOCX, RTF, XLS, XLSX, XLSM, PPT, PPTX), and descriptions directly on your device (Local-First). Source files never leave your PC — only extracted text context goes to the terminal.',
         },
         {
-          title: '02. Two Contours: "Numbers" & "Risks"',
+          title: '02. Three Contours: "Numbers", "Risks" & "Recommendations"',
           description:
-            'The financial contour builds CAPEX, OPEX, revenue, headcount, and payback charts. The risk contour evaluates market, legal, operational, HR, and regional constraints.',
+            'The financial contour builds CAPEX, OPEX, revenue, headcount, and payback charts. The risk contour evaluates constraints, while the recommendations contour provides an analyst verdict, risk mitigations, crisis plan, and control KPIs.',
         },
         {
           title: '03. Interactive Recalculation & PDF Export',
@@ -498,7 +510,7 @@ export const TRANSLATIONS = {
       ],
       bottomTitle: 'Ready to evaluate a new investment project or business idea?',
       bottomDesc:
-        'Enter your contact details, target region, and attach local files — the terminal will build the project passport and run a two-contour analysis.',
+        'Enter your contact details, target region, and attach local files — the terminal will build the project passport and run a three-contour analysis.',
     },
     projects: {
       emptyTitle: 'No saved projects yet',
@@ -688,7 +700,13 @@ export const TRANSLATIONS = {
       chatMemoryNote: 'Memory saved under E-mail',
       chatEmptyTitle: 'Project dialogue history is empty',
       chatEmptyDesc:
-        'Click "Analyze Project" for a baseline two-contour evaluation, or ask the analyst a question with additional local files.',
+        'Click "Analyze Project" for a baseline three-contour evaluation ("Numbers", "Risks", "Recommendations"), or ask the analyst a question with additional local files.',
+      contoursSummaryTitle: 'Three Analysis Contours',
+      contourTabNumbers: '01. Numbers',
+      contourTabRisks: '02. Risks',
+      contourTabRecommendations: '03. Recommendations',
+      showContours: 'Show contours',
+      hideContours: 'Collapse contours',
       analystName: 'IPDS Analyst',
       investments: 'Investments',
       revenueMo: 'Revenue/mo',
@@ -707,7 +725,7 @@ export const TRANSLATIONS = {
     report: {
       notReadyTitle: 'Report for "{name}" has not been generated yet',
       notReadyDesc:
-        'Run the two-contour analysis using the project passport and locally extracted documents to generate the financial model, payback charts, and risk map.',
+        'Run the three-contour analysis using the project passport and locally extracted documents to generate the financial model, risk map, and recommendations.',
       runAnalyze: 'Analyze Project',
       runningAnalyze: 'Running AI analysis...',
       notFoundTitle: 'Project not found',
@@ -767,6 +785,12 @@ export const TRANSLATIONS = {
       mitigationPrefix: 'Mitigation:',
       assumptionsTitle: 'Key Model Assumptions',
       preLaunchTitle: 'Priority Pre-Launch Steps',
+      contour3Title: '03. Contour «Recommendations»',
+      contour3Meta: 'Based on project data, «Numbers», and «Risks» contours',
+      recConclusionTitle: 'Analyst Final Conclusion',
+      recMitigationTitle: 'Risk Elimination & Mitigation Measures',
+      recCrisisTitle: 'Crisis & Bottleneck Exit Plan',
+      recGrowthTitle: 'Further Development Plan & Key Control Metrics',
       pdfMemorandum: 'IPDS Terminal · Investment Memorandum',
       pdfRegion: 'Region',
       pdfInitiator: 'Initiator',

@@ -77,6 +77,13 @@ export interface RiskItem {
   mitigation: string;
 }
 
+export interface ProjectRecommendations {
+  analystConclusion: string;
+  riskMitigationMeasures: string[];
+  crisisAndBottleneckPlan: string[];
+  growthPlanAndMetrics: string[];
+}
+
 export interface ProjectAnalysis {
   executiveSummary: string;
   currencyCode: string;
@@ -89,6 +96,7 @@ export interface ProjectAnalysis {
   risks: RiskItem[];
   assumptions: string[];
   preLaunchSteps: string[];
+  recommendations?: ProjectRecommendations;
   generatedAt: string;
   modelUsed: string;
 }

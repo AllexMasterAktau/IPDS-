@@ -219,7 +219,7 @@ export async function analyzeProjectWithGemini(
     language === 'en' ? 'in English' : 'на русском языке';
 
   const prompt = `Ты — старший инвестиционный аналитик системы «IPDS Терминал» (Intelligent Business Systems).
-Проведи глубокий инвестиционный и проектный экспресс-анализ в двух контурах («Цифры и экономика» и «Риски и ограничения»). Все текстовые поля результата (executiveSummary, costStructure.category, costStructure.note, revenueDrivers, unitEconomicsSummary, risks.dimensionLabel, risks.title, risks.description, risks.mitigation, assumptions, preLaunchSteps) сформируй строго ${targetLangInstruction}.
+Проведи глубокий инвестиционный и проектный экспресс-анализ в трёх контурах («Цифры и экономика», «Риски и ограничения» и «Рекомендации» на базе паспорта, локальных документов, расчётов 1-го контура и рисков 2-го контура). Все текстовые поля результата сформируй строго ${targetLangInstruction}.
 
 ПАСПОРТ ПРОЕКТА:
 - Название проекта: ${project.projectName}
@@ -232,10 +232,11 @@ export async function analyzeProjectWithGemini(
 ЛОКАЛЬНО ИЗВЛЕЧЁННЫЙ КОНТЕКСТ ДОКУМЕНТОВ (файлы не загружались в облако, прочитаны на устройстве пользователя):
 ${buildDocumentsContext(project.documents)}
 
-ТРЕБОВАНИЯ К РАСЧЁТАМ:
+ТРЕБОВАНИЯ К РАСЧЁТАМ И РЕКОМЕНДАЦИЯМ:
 1. Все денежные суммы (investmentAmount, monthlyRevenue, monthlyOpex, payrollPerEmployeeMonthly, costStructure.amount) указывай в полных единицах выбранной валюты (${project.currencyCode}, например 15000000 для 15 млн), без сокращений.
 2. Обеспечь математическую согласованность: сумма costStructure.amount должна примерно соответствовать investmentAmount, сумма costStructure.sharePct должна быть близка к 100%, а monthlyRevenue и monthlyOpex должны отражать реалистичную экономику для региона «${regionLabel}».
-3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).`;
+3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).
+4. В разделе recommendations сформируй 4 блока: analystConclusion (Итоговое заключение аналитика), riskMitigationMeasures (Меры по устранению и снижению рисков), crisisAndBottleneckPlan (План выхода из кризисных и узких точек), growthPlanAndMetrics (План дальнейшего развития и ключевые контрольные метрики).`;
 
   const { text: rawText, modelUsed } = await generateWithRetryAndFallback(
     ai,
@@ -355,6 +356,30 @@ ${buildDocumentsContext(project.documents)}
               items: { type: Type.STRING },
               description: 'Приоритетные шаги до запуска и привлечения финансирования (3-5 пунктов).',
             },
+            recommendations: {
+              type: Type.OBJECT,
+              properties: {
+                analystConclusion: { type: Type.STRING },
+                riskMitigationMeasures: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                crisisAndBottleneckPlan: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                growthPlanAndMetrics: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                'analystConclusion',
+                'riskMitigationMeasures',
+                'crisisAndBottleneckPlan',
+                'growthPlanAndMetrics',
+              ],
+            },
           },
           required: [
             'executiveSummary',
@@ -366,6 +391,7 @@ ${buildDocumentsContext(project.documents)}
             'risks',
             'assumptions',
             'preLaunchSteps',
+            'recommendations',
           ],
         },
       },
@@ -419,6 +445,7 @@ ${buildDocumentsContext(project.documents)}
     risks: normalizedRisks,
     assumptions: parsed.assumptions ?? [],
     preLaunchSteps: parsed.preLaunchSteps ?? [],
+    recommendations: parsed.recommendations,
     generatedAt: new Date().toISOString(),
     modelUsed,
   };

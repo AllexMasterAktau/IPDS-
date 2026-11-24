@@ -6,6 +6,7 @@ import {
   FxRateMap,
   Language,
   ProjectAnalysis,
+  ProjectRecommendations,
   RegionPreset,
 } from '../types/ipds';
 
@@ -277,3 +278,87 @@ export function calculateDerivedMetrics(
     cashflowSeries,
   };
 }
+
+/**
+ * Возвращает структурированный 3-й контур «Рекомендации».
+ * Для новых отчётов используется результат ИИ напрямую; для ранее сохранённых
+ * отчётов без поля recommendations формируется согласованная сводка из контуров 1 и 2.
+ */
+export function getEffectiveRecommendations(
+  analysis: ProjectAnalysis,
+  metrics: DerivedMetrics,
+  language: Language = 'ru'
+): ProjectRecommendations {
+  const rec = analysis.recommendations;
+  const hasAiRec =
+    Boolean(rec?.analystConclusion?.trim()) &&
+    (rec?.riskMitigationMeasures?.length ?? 0) > 0 &&
+    (rec?.crisisAndBottleneckPlan?.length ?? 0) > 0 &&
+    (rec?.growthPlanAndMetrics?.length ?? 0) > 0;
+
+  if (hasAiRec && rec) {
+    return {
+      analystConclusion: rec.analystConclusion.trim(),
+      riskMitigationMeasures: rec.riskMitigationMeasures.filter(Boolean),
+      crisisAndBottleneckPlan: rec.crisisAndBottleneckPlan.filter(Boolean),
+      growthPlanAndMetrics: rec.growthPlanAndMetrics.filter(Boolean),
+    };
+  }
+
+  const paybackText = metrics.paybackMonths
+    ? language === 'en'
+      ? `${metrics.paybackMonths} months`
+      : `${metrics.paybackMonths} мес.`
+    : language === 'en'
+    ? 'over 60 months'
+    : 'свыше 60 мес.';
+
+  const analystConclusion =
+    rec?.analystConclusion?.trim() ||
+    (language === 'en'
+      ? `${analysis.executiveSummary} Based on Contour 1 calculations (EBITDA margin ${metrics.ebitdaMarginPct}%, annual ROI ${metrics.roiAnnualPct}%, estimated payback ${paybackText}) and Contour 2 risk profile, the project is viable provided launch discipline, working capital reserve control, and key risk mitigations are maintained.`
+      : `${analysis.executiveSummary} С учётом расчётов 1-го контура (EBITDA маржа ${metrics.ebitdaMarginPct}%, годовой ROI ${metrics.roiAnnualPct}%, расчётная окупаемость ${paybackText}) и карты рисков 2-го контура проект реализуем при соблюдении дисциплины запуска, контроле оборотного резерва и выполнении мер по снижению ключевых рисков.`);
+
+  const riskMitigationMeasures =
+    rec?.riskMitigationMeasures && rec.riskMitigationMeasures.length > 0
+      ? rec.riskMitigationMeasures
+      : analysis.risks
+          .map((r) => `${r.title}: ${r.mitigation}`)
+          .filter(Boolean);
+
+  const crisisAndBottleneckPlan =
+    rec?.crisisAndBottleneckPlan && rec.crisisAndBottleneckPlan.length > 0
+      ? rec.crisisAndBottleneckPlan
+      : language === 'en'
+      ? [
+          ...analysis.preLaunchSteps.slice(0, 2),
+          'Hold a dedicated liquidity buffer covering 2–3 months of fixed OPEX in case launch timeline or revenue ramp shifts.',
+          'Define trigger thresholds (revenue < 70% of plan or burn-rate overrun > 15%) to pause non-critical CAPEX and reallocate marketing.',
+        ]
+      : [
+          ...analysis.preLaunchSteps.slice(0, 2),
+          'Сформировать отдельный резерв ликвидности на 2–3 месяца фиксированного OPEX на случай сдвига сроков запуска или выхода на плановую выручку.',
+          'Утвердить триггеры антикризисного реагирования (выручка < 70% плана или перерасход OPEX > 15%) с заморозкой второстепенных расходов.',
+        ];
+
+  const growthPlanAndMetrics =
+    rec?.growthPlanAndMetrics && rec.growthPlanAndMetrics.length > 0
+      ? rec.growthPlanAndMetrics
+      : language === 'en'
+      ? [
+          ...analysis.revenueDrivers.slice(0, 2),
+          `Control KPIs: monthly revenue vs. plan, EBITDA margin >= ${Math.max(10, Math.round(metrics.ebitdaMarginPct))}%, payback <= ${metrics.paybackMonths ?? 36} mo.`,
+        ]
+      : [
+          ...analysis.revenueDrivers.slice(0, 2),
+          `Контрольные метрики: выполнение плана ежемесячной выручки, удержание EBITDA маржи >= ${Math.max(10, Math.round(metrics.ebitdaMarginPct))}% и срока окупаемости <= ${metrics.paybackMonths ?? 36} мес.`,
+        ];
+
+  return {
+    analystConclusion,
+    riskMitigationMeasures,
+    crisisAndBottleneckPlan,
+    growthPlanAndMetrics,
+  };
+}
+

@@ -1,6 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   FileText,
   Lock,
@@ -20,10 +22,14 @@ import type {
 } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
 import {
+  calculateDerivedMetrics,
   convertCurrencyAmount,
+  formatCompactMoney,
   formatMoney,
   getCurrencySymbol,
   getEffectiveInputs,
+  getEffectiveRecommendations,
+  getFxConversionFactor,
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
@@ -73,11 +79,31 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appliedMsgIds, setAppliedMsgIds] = useState<Record<string, boolean>>({});
+  const [activeContourTab, setActiveContourTab] = useState<
+    'numbers' | 'risks' | 'recommendations'
+  >('recommendations');
+  const [contoursExpanded, setContoursExpanded] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const regionLabel = getRegionDisplayLabel(project.region, project.customRegion, language);
   const baseCurrency = normalizeCurrencyCode(project.analysis?.currencyCode || project.currencyCode);
   const displaySymbol = getCurrencySymbol(displayCurrency);
+  const fxFactor = getFxConversionFactor(baseCurrency, displayCurrency, fxRates);
+
+  const derivedMetrics = useMemo(() => {
+    if (!project.analysis) return null;
+    return calculateDerivedMetrics(
+      project.analysis,
+      project.manualOverrides,
+      fxFactor,
+      t.common.monthPrefix
+    );
+  }, [project.analysis, project.manualOverrides, fxFactor, t.common.monthPrefix]);
+
+  const effectiveRecommendations = useMemo(() => {
+    if (!project.analysis || !derivedMetrics) return null;
+    return getEffectiveRecommendations(project.analysis, derivedMetrics, language);
+  }, [project.analysis, derivedMetrics, language]);
 
   const reportTabUrl = `/?view=report&projectId=${encodeURIComponent(project.id)}`;
 
@@ -273,6 +299,168 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
           </div>
         )}
       </div>
+
+      {/* Три контура анализа рядом с диалогом (Цифры, Риски, Рекомендации) */}
+      {project.analysis && derivedMetrics && effectiveRecommendations && (
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-[#1E2022] mr-1">
+                {t.dialogue.contoursSummaryTitle}:
+              </span>
+              {(
+                [
+                  { id: 'numbers', label: t.dialogue.contourTabNumbers },
+                  { id: 'risks', label: t.dialogue.contourTabRisks },
+                  { id: 'recommendations', label: t.dialogue.contourTabRecommendations },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveContourTab(tab.id);
+                    setContoursExpanded(true);
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer border whitespace-nowrap ${
+                    activeContourTab === tab.id && contoursExpanded
+                      ? 'bg-[#1A1C1F] border-white/[0.26] text-[#F5F3EE] font-semibold'
+                      : 'bg-[#FFFFFF] border-[#C9C1B2] text-[#3A3D42] hover:border-[#8C6D3F] hover:text-[#1E2022]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setContoursExpanded((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs text-[#5C6066] hover:text-[#1E2022] cursor-pointer"
+            >
+              <span>
+                {contoursExpanded ? t.dialogue.hideContours : t.dialogue.showContours}
+              </span>
+              {contoursExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+
+          {contoursExpanded && activeContourTab === 'numbers' && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiInvestments}</div>
+                  <div className="text-xs font-mono-tabular font-bold text-[#9A6E2E] mt-0.5">
+                    {formatCompactMoney(derivedMetrics.investmentAmount, displaySymbol, language)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiRevenue}</div>
+                  <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
+                    {formatCompactMoney(derivedMetrics.monthlyRevenue, displaySymbol, language)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                  <div className="text-[11px] text-[#5C6066]">{t.report.pdfEbitdaMargin}</div>
+                  <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
+                    {derivedMetrics.ebitdaMarginPct}%
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiPayback}</div>
+                  <div className="text-xs font-mono-tabular font-bold text-emerald-700 mt-0.5">
+                    {derivedMetrics.paybackMonths
+                      ? `${derivedMetrics.paybackMonths} ${t.common.monthsShort}`
+                      : t.common.moreThan60Months}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-[#3A3D42] leading-snug bg-[#FFFFFF] border border-[#E5E0D5] rounded-lg px-3 py-2">
+                {project.analysis.executiveSummary}
+              </p>
+            </div>
+          )}
+
+          {contoursExpanded && activeContourTab === 'risks' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {project.analysis.risks.map((risk) => (
+                <div
+                  key={risk.id}
+                  className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-2.5 space-y-1 text-xs leading-snug"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-[#5C6066]">
+                      {risk.dimensionLabel}
+                    </span>
+                    <span
+                      className={`text-[11px] font-semibold ${
+                        risk.severity === 'high'
+                          ? 'text-rose-700'
+                          : risk.severity === 'medium'
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
+                      }`}
+                    >
+                      {t.report.severity[risk.severity]}
+                    </span>
+                  </div>
+                  <div className="font-semibold text-[#1E2022]">{risk.title}</div>
+                  <div className="text-[#5C6066]">{risk.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {contoursExpanded && activeContourTab === 'recommendations' && (
+            <div className="space-y-2.5">
+              <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] p-3 space-y-1">
+                <div className="text-[11px] font-semibold text-[#9A6E2E]">
+                  {t.report.recConclusionTitle}
+                </div>
+                <p className="text-xs text-[#1E2022] leading-snug">
+                  {effectiveRecommendations.analystConclusion}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                    {t.report.recMitigationTitle}
+                  </div>
+                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+                    {effectiveRecommendations.riskMitigationMeasures.map((m, i) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                    {t.report.recCrisisTitle}
+                  </div>
+                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
+                    {effectiveRecommendations.crisisAndBottleneckPlan.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                    {t.report.recGrowthTitle}
+                  </div>
+                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+                    {effectiveRecommendations.growthPlanAndMetrics.map((g, i) => (
+                      <li key={i}>{g}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* История диалога с ИИ */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col">

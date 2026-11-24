@@ -234,7 +234,12 @@ export async function clientAnalyzeProject(
   const targetLangInstruction = language === 'en' ? 'in English' : 'на русском языке';
 
   const prompt = `Ты — старший инвестиционный аналитик системы «IPDS Терминал» (Intelligent Business Systems).
-Проведи глубокий инвестиционный и проектный экспресс-анализ в двух контурах («Цифры и экономика» и «Риски и ограничения»). Все текстовые поля результата (executiveSummary, costStructure.category, costStructure.note, revenueDrivers, unitEconomicsSummary, risks.dimensionLabel, risks.title, risks.description, risks.mitigation, assumptions, preLaunchSteps) сформируй строго ${targetLangInstruction}.
+Проведи глубокий инвестиционный и проектный экспресс-анализ в трёх контурах:
+1) Контур «Цифры и экономика» (baselineInputs, payrollPerEmployeeMonthly, costStructure, revenueDrivers, unitEconomicsSummary, executiveSummary);
+2) Контур «Риски и ограничения» (risks, assumptions, preLaunchSteps);
+3) Контур «Рекомендации» (recommendations — опираясь на данные паспорта проекта, загруженные локальные документы, расчёты 1-го контура «Цифры» и выявленные риски 2-го контура «Риски»).
+
+Все текстовые поля результата (executiveSummary, costStructure.category, costStructure.note, revenueDrivers, unitEconomicsSummary, risks.dimensionLabel, risks.title, risks.description, risks.mitigation, assumptions, preLaunchSteps, recommendations.analystConclusion, recommendations.riskMitigationMeasures, recommendations.crisisAndBottleneckPlan, recommendations.growthPlanAndMetrics) сформируй строго ${targetLangInstruction}.
 
 ПАСПОРТ ПРОЕКТА:
 - Название проекта: ${project.projectName}
@@ -247,10 +252,15 @@ export async function clientAnalyzeProject(
 ЛОКАЛЬНО ИЗВЛЕЧЁННЫЙ КОНТЕКСТ ДОКУМЕНТОВ (файлы не загружались в облако, прочитаны на устройстве пользователя):
 ${buildDocumentsContext(project.documents)}
 
-ТРЕБОВАНИЯ К РАСЧЁТАМ:
+ТРЕБОВАНИЯ К РАСЧЁТАМ И РЕКОМЕНДАЦИЯМ:
 1. Все денежные суммы (investmentAmount, monthlyRevenue, monthlyOpex, payrollPerEmployeeMonthly, costStructure.amount) указывай в полных единицах выбранной валюты (${project.currencyCode}, например 15000000 для 15 млн), без сокращений.
 2. Обеспечь математическую согласованность: сумма costStructure.amount должна примерно соответствовать investmentAmount, сумма costStructure.sharePct должна быть близка к 100%, а monthlyRevenue и monthlyOpex должны отражать реалистичную экономику для региона «${regionLabel}».
-3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).`;
+3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).
+4. В разделе recommendations обязательно сформируй 4 структурированных блока (по 3–5 конкретных пунктов в каждом списке, привязанных к цифрам и рискам именно этого проекта):
+   - analystConclusion: Итоговое заключение аналитика (целостный вердикт по реализуемости, экономике, окупаемости и ключевому условию успеха, 3–5 предложений);
+   - riskMitigationMeasures: Меры по устранению и снижению рисков (прикладные шаги, напрямую закрывающие выявленные риски из 2-го контура);
+   - crisisAndBottleneckPlan: План выхода из кризисных и узких точек (антикризисные действия на случай просадки спроса, кассового разрыва, задержки запуска или регуляторных ограничений);
+   - growthPlanAndMetrics: План дальнейшего развития и ключевые контрольные метрики (поэтапное масштабирование и конкретные KPI/пороги контроля).`;
 
   const { text: rawText, modelUsed } = await generateWithRetryAndFallback(
     ai,
@@ -331,6 +341,30 @@ ${buildDocumentsContext(project.documents)}
               type: Type.ARRAY,
               items: { type: Type.STRING },
             },
+            recommendations: {
+              type: Type.OBJECT,
+              properties: {
+                analystConclusion: { type: Type.STRING },
+                riskMitigationMeasures: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                crisisAndBottleneckPlan: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                growthPlanAndMetrics: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                'analystConclusion',
+                'riskMitigationMeasures',
+                'crisisAndBottleneckPlan',
+                'growthPlanAndMetrics',
+              ],
+            },
           },
           required: [
             'executiveSummary',
@@ -342,6 +376,7 @@ ${buildDocumentsContext(project.documents)}
             'risks',
             'assumptions',
             'preLaunchSteps',
+            'recommendations',
           ],
         },
       },
@@ -361,6 +396,21 @@ ${buildDocumentsContext(project.documents)}
     description: risk.description || '',
     mitigation: risk.mitigation || '',
   }));
+
+  const rawRec = parsed.recommendations || {};
+  const normalizedRecommendations = {
+    analystConclusion:
+      typeof rawRec.analystConclusion === 'string' ? rawRec.analystConclusion.trim() : '',
+    riskMitigationMeasures: Array.isArray(rawRec.riskMitigationMeasures)
+      ? rawRec.riskMitigationMeasures.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+    crisisAndBottleneckPlan: Array.isArray(rawRec.crisisAndBottleneckPlan)
+      ? rawRec.crisisAndBottleneckPlan.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+    growthPlanAndMetrics: Array.isArray(rawRec.growthPlanAndMetrics)
+      ? rawRec.growthPlanAndMetrics.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+  };
 
   return {
     executiveSummary: parsed.executiveSummary || '',
@@ -384,6 +434,7 @@ ${buildDocumentsContext(project.documents)}
     risks: normalizedRisks,
     assumptions: parsed.assumptions ?? [],
     preLaunchSteps: parsed.preLaunchSteps ?? [],
+    recommendations: normalizedRecommendations,
     generatedAt: new Date().toISOString(),
     modelUsed,
   };
@@ -439,10 +490,20 @@ export async function clientChatWithAnalyst(
 - Ежемесячный OPEX: ${currentEffectiveInputs.monthlyOpex}`
     : '';
 
+  const existingContoursBlock = project.analysis
+    ? `\nТЕКУЩИЕ ВЫВОДЫ ПО 3 КОНТУРАМ АНАЛИЗА:
+- Контур 1 (Цифры): ${project.analysis.executiveSummary}
+- Контур 2 (Риски): ${project.analysis.risks.map((r) => `${r.title} (${r.severity})`).join('; ')}
+- Контур 3 (Рекомендации): ${
+        project.analysis.recommendations?.analystConclusion ||
+        'Рекомендации формируются на базе контуров Цифры и Риски.'
+      }`
+    : '';
+
   const replyLangInstruction = language === 'en' ? 'in English' : 'на русском языке';
 
   const prompt = `Ты — инвестиционный аналитик «IPDS Терминал» (Intelligent Business Systems).
-Отвечай предметно, профессионально и строго ${replyLangInstruction}, опираясь на сохранённый паспорт проекта, предыдущую переписку и прикреплённые локальные файлы.
+Отвечай предметно, профессионально и строго ${replyLangInstruction}, опираясь на сохранённый паспорт проекта, три контура анализа («Цифры», «Риски», «Рекомендации»), предыдущую переписку и прикреплённые локальные файлы.
 
 ПАСПОРТ ПРОЕКТА:
 - Проект: ${project.projectName}
@@ -450,6 +511,7 @@ export async function clientChatWithAnalyst(
 - Категория: ${project.category || 'Не указана'}
 - Комментарий: ${project.comment || 'Нет'}
 ${currentModelBlock}
+${existingContoursBlock}
 
 РАНЕЕ ЗАГРУЖЕННЫЕ ДОКУМЕНТЫ:
 ${buildDocumentsContext(project.documents)}
