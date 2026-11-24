@@ -210,25 +210,10 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       {/* Шапка проекта и главные действия анализа */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="space-y-0.5 leading-snug">
-          <div className="text-xs text-[#5C6066] flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>
-              {regionLabel} · {displayCurrency}
-              {baseCurrency !== displayCurrency ? ` (${baseCurrency})` : ''} · {project.fullName} (
-              {project.email})
-            </span>
-            {project.analysis?.modelUsed && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#EFECE4] border border-[#DDD5C3] text-[11px] font-medium text-[#3A3D42]">
-                <span>{t.dialogue.reportModelLabel}:</span>
-                <span className="font-mono-tabular text-[#1E2022]">
-                  {project.analysis.modelUsed}
-                </span>
-                {project.analysis.usedFallbackModel && (
-                  <span className="text-[#9A6E2E] font-semibold">
-                    ({t.dialogue.fallbackModelTag})
-                  </span>
-                )}
-              </span>
-            )}
+          <div className="text-xs text-[#5C6066]">
+            {regionLabel} · {displayCurrency}
+            {baseCurrency !== displayCurrency ? ` (${baseCurrency})` : ''} · {project.fullName} (
+            {project.email})
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug">{project.projectName}</h2>
           {project.comment && (
@@ -512,22 +497,10 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
                     : 'bg-[#EFECE4] border border-[#DDD5C3] mr-4 sm:mr-10'
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1 text-[11px] text-[#5C6066]">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-semibold text-[#1E2022]">
-                      {msg.role === 'user' ? project.fullName : t.dialogue.analystName}
-                    </span>
-                    {msg.role === 'assistant' && msg.modelUsed && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FAF8F3] border border-[#DDD5C3] text-[10px] font-mono-tabular text-[#3A3D42]">
-                        <span>{msg.modelUsed}</span>
-                        {msg.usedFallbackModel && (
-                          <span className="text-[#9A6E2E] font-sans font-semibold">
-                            · {t.dialogue.fallbackModelTag}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
+                <div className="flex items-center justify-between gap-2 mb-1 text-[11px] text-[#5C6066]">
+                  <span className="font-semibold text-[#1E2022]">
+                    {msg.role === 'user' ? project.fullName : t.dialogue.analystName}
+                  </span>
                   <span className="font-mono-tabular">
                     {new Date(msg.createdAt).toLocaleString(
                       language === 'en' ? 'en-US' : 'ru-RU',

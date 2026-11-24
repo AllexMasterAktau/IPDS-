@@ -144,28 +144,29 @@ function isThinkingConfigError(err: unknown): boolean {
   return msg.includes('thinking') || msg.includes('thinking_level') || msg.includes('thinkinglevel');
 }
 
+export function getOverloadedCascadeMessage(language: Language = 'ru'): string {
+  return language === 'en'
+    ? 'The analytical model is overloaded. Please check back in a few minutes.'
+    : 'Аналитическая модель перегружена. Зайдите через несколько минут';
+}
+
 export function formatGeminiUserError(err: unknown, language: Language = 'ru'): string {
   if (isInvalidApiKeyError(err)) {
     return language === 'en'
       ? 'Invalid or rejected Gemini API key. Please check your key settings.'
       : 'Недействительный или отклонённый ключ Gemini API. Проверьте настройки ключа.';
   }
-  if (isTransientOverloadError(err)) {
-    return language === 'en'
-      ? 'All free Gemini models are temporarily overloaded or rate-limited. Please try again in 10–15 seconds.'
-      : 'Все доступные модели Gemini временно перегружены или достигли лимита. Повторите запрос через 10–15 секунд.';
-  }
-  if (isHardQuotaOrModelBlockedError(err)) {
-    return language === 'en'
-      ? 'Available Gemini models are currently restricted by quota or permissions. Check your API key limits.'
-      : 'Доступные модели Gemini ограничены по квоте или правам доступа. Проверьте лимиты ключа API.';
+  if (
+    isTransientOverloadError(err) ||
+    isHardQuotaOrModelBlockedError(err) ||
+    isModelNotFoundOrUnsupportedError(err)
+  ) {
+    return getOverloadedCascadeMessage(language);
   }
 
   const raw = getErrorText(err).trim();
   if (!raw || raw.startsWith('{') || raw.includes('"error"')) {
-    return language === 'en'
-      ? 'Failed to get a response from the AI service. Please try again.'
-      : 'Не удалось получить ответ от сервиса ИИ. Повторите попытку.';
+    return getOverloadedCascadeMessage(language);
   }
   return raw;
 }
@@ -245,7 +246,10 @@ async function generateWithRetryAndFallback(
     }
   }
 
-  throw new Error(formatGeminiUserError(lastError, language));
+  if (lastError && isInvalidApiKeyError(lastError)) {
+    throw new Error(formatGeminiUserError(lastError, language));
+  }
+  throw new Error(getOverloadedCascadeMessage(language));
 }
 
 function buildDocumentsContext(documents: LocalDocumentDigest[]): string {
