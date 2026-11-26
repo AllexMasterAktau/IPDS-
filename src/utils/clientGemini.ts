@@ -329,14 +329,18 @@ export async function clientAnalyzeProject(
       ? project.customRegion
       : project.region;
   const targetLangInstruction = language === 'en' ? 'in English' : 'на русском языке';
+  const hasMissingActivityFields =
+    !project.businessScope?.trim() ||
+    !project.activityType?.trim() ||
+    !project.okedCode?.trim();
 
-  const prompt = `Ты — старший инвестиционный аналитик системы «IPDS Терминал» (Intelligent Business Systems).
-Проведи глубокий инвестиционный и проектный экспресс-анализ в трёх контурах:
-1) Контур «Цифры и экономика» (baselineInputs, payrollPerEmployeeMonthly, costStructure, revenueDrivers, unitEconomicsSummary, executiveSummary);
-2) Контур «Риски и ограничения» (risks, assumptions, preLaunchSteps);
-3) Контур «Рекомендации» (recommendations — опираясь на данные паспорта проекта, загруженные локальные документы, расчёты 1-го контура «Цифры» и выявленные риски 2-го контура «Риски»).
+  const prompt = `Ты — жёсткий инвестиционный комитет и старший проектный/правовой аналитик системы «IPDS Терминал» (Intelligent Business Systems).
+Проведи глубокий независимый аудит проекта (НЕ пересказывай слепо цифры из документов инициатора — подвергай их стресс-проверке и критической переоценке) в трёх контурах:
+1) Контур «Цифры и экономика» (executiveSummary, investmentCommitteeVerdict, investmentCommitteeVerdictReason, baselineInputs, payrollPerEmployeeMonthly, costStructure, revenueDrivers, unitEconomicsSummary, independentValuation, committeeAudit);
+2) Контур «Риски и ограничения» (risks по 5 измерениям, legalCompliance — глубокий правовой и регуляторный срез по региону «${regionLabel}» и виду деятельности/ОКЭД, assumptions, preLaunchSteps);
+3) Контур «Рекомендации» (recommendations — заключение, меры по устранению рисков, план выхода из кризисных точек и план роста/KPI на базе 1-го и 2-го контуров).
 
-Все текстовые поля результата (executiveSummary, costStructure.category, costStructure.note, revenueDrivers, unitEconomicsSummary, risks.dimensionLabel, risks.title, risks.description, risks.mitigation, assumptions, preLaunchSteps, recommendations.analystConclusion, recommendations.riskMitigationMeasures, recommendations.crisisAndBottleneckPlan, recommendations.growthPlanAndMetrics) сформируй строго ${targetLangInstruction}.
+Все текстовые поля результата сформируй строго ${targetLangInstruction}.
 
 ПАСПОРТ ПРОЕКТА:
 - Название проекта: ${project.projectName}
@@ -344,20 +348,39 @@ export async function clientAnalyzeProject(
 - Регион реализации: ${regionLabel}
 - Валюта расчётов: ${project.currencyCode} (${project.currencySymbol})
 - Категория / отрасль: ${project.category || 'Не указана'}
+- Род деятельности: ${project.businessScope?.trim() || 'НЕ УКАЗАН (требуется определить и предложить)'}
+- Вид деятельности: ${project.activityType?.trim() || 'НЕ УКАЗАН (требуется определить и предложить)'}
+- Код ОКЭД / ОКВЭД / классификатор: ${project.okedCode?.trim() || 'НЕ УКАЗАН (требуется определить и предложить)'}
 - Комментарий инициатора: ${project.comment || 'Нет дополнительного комментария'}
 
 ЛОКАЛЬНО ИЗВЛЕЧЁННЫЙ КОНТЕКСТ ДОКУМЕНТОВ (файлы не загружались в облако, прочитаны на устройстве пользователя):
 ${buildDocumentsContext(project.documents)}
 
-ТРЕБОВАНИЯ К РАСЧЁТАМ И РЕКОМЕНДАЦИЯМ:
-1. Все денежные суммы (investmentAmount, monthlyRevenue, monthlyOpex, payrollPerEmployeeMonthly, costStructure.amount) указывай в полных единицах выбранной валюты (${project.currencyCode}, например 15000000 для 15 млн), без сокращений.
-2. Обеспечь математическую согласованность: сумма costStructure.amount должна примерно соответствовать investmentAmount, сумма costStructure.sharePct должна быть близка к 100%, а monthlyRevenue и monthlyOpex должны отражать реалистичную экономику для региона «${regionLabel}».
-3. В разделе risks обязательно покрой все 5 контуров: market (Рыночные), legal (Правовые и регуляторные), operational (Операционные), hr (Кадровые), regional (Региональные для «${regionLabel}»).
-4. В разделе recommendations обязательно сформируй 4 структурированных блока (по 3–5 конкретных пунктов в каждом списке, привязанных к цифрам и рискам именно этого проекта):
-   - analystConclusion: Итоговое заключение аналитика (целостный вердикт по реализуемости, экономике, окупаемости и ключевому условию успеха, 3–5 предложений);
-   - riskMitigationMeasures: Меры по устранению и снижению рисков (прикладные шаги, напрямую закрывающие выявленные риски из 2-го контура);
-   - crisisAndBottleneckPlan: План выхода из кризисных и узких точек (антикризисные действия на случай просадки спроса, кассового разрыва, задержки запуска или регуляторных ограничений);
-   - growthPlanAndMetrics: План дальнейшего развития и ключевые контрольные метрики (поэтапное масштабирование и конкретные KPI/пороги контроля).`;
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ЖЁСТКОГО АУДИТА И ПРАВОВОГО СРЕЗА:
+1. ПРАВОВОЙ И РЕГУЛЯТОРНЫЙ СРЕЗ ПО РЕГИОНУ «${regionLabel}» (legalCompliance):
+   - Проверь проект по применимому законодательству выбранного региона («${regionLabel}» — для Казахстана: НК РК, ПК РК, ГК РК, УК РК; для РФ: НК РФ, ГК РФ, УК РФ, законы о лицензировании/бизнесе; для Международного/иного региона: применимые налоговые, корпоративные/предпринимательские, гражданские, уголовно-правовые и отраслевые нормы):
+     * taxCodeChecks: Налоговый кодекс (спецрежимы vs ОУР, НДС, налоги на ФОТ, трансграничные/дивидендные риски).
+     * entrepreneurialCodeChecks: Предпринимательский кодекс / нормы регулирования бизнеса (ОПФ, субсидии, антимонопольные, проверки, статус МСБ).
+     * civilCodeChecks: Гражданский кодекс (договорная обвязка, права на ИС/активы, ответственность, возвратность/залоги).
+     * criminalCodeRisks: Уголовный кодекс (уголовно-правовые риски: безлицензионная/незаконная деятельность, уклонение от налогов, мошенничество/финансирование, персональные данные, AML/KYC).
+     * industryLicensingRequirements: профильные отраслевые лицензии, разрешения, сертификация, техрегламенты.
+     * legalStopFactors: 2–4 конкретных правовых стоп-фактора.
+   - Если род деятельности, вид деятельности или код ОКЭД не заполнены (${hasMissingActivityFields ? 'СЕЙЧАС НЕ ЗАПОЛНЕНЫ' : 'заполнены'}), обязательно укажи в missingFieldsWarning, каких полей не хватает, установи activityClassificationStatus = "missing_suggested" (или "provided", если все 3 заполнены) и предложи наиболее точные suggestedBusinessScope, suggestedActivityType и suggestedOkedCode на основе сути проекта и документов.
+2. НЕЗАВИСИМАЯ ПЕРЕОЦЕНКА ТЕРМИНАЛА (independentValuation И baselineInputs):
+   - НЕ повторяй слепо оптимистичные цифры инициатора. В baselineInputs заложи РЕАЛИСТИЧНУЮ оценку терминала с учётом скрытых затрат, оборотного капитала и буфера.
+   - В independentValuation сопоставь «Заявлено в документах» vs «Реалистичная оценка терминала»:
+     * claimedProjectValue vs realisticProjectValueRange + valuationMethodology (обоснуй диапазон оценки бизнеса сейчас);
+     * claimedInvestment vs realisticInvestmentAmount + investmentGapExplanation (почему реально нужно больше с учётом ФОТ на разгон, маркетинга, лицензий и резерва);
+     * claimedPayback vs realisticPaybackBase и realisticPaybackStress + paybackComment.
+3. АУДИТ ЖЁСТКОГО ИНВЕСТ-КОМИТЕТА (investmentCommitteeVerdict + committeeAudit):
+   - Вынеси вердикт GO, CONDITIONAL_GO или NO_GO и краткое жёсткое обоснование (investmentCommitteeVerdictReason).
+   - Проверь: unitEconomicsCheck (LTV/CAC, Burn Rate, маржа, масштабируемость), demandAndPainCheck (реальная боль и подтверждённый спрос), competitiveMoatCheck (защитимый «ров»), teamAndSkinInTheGame (команда и «шкура на кону»), stressTestSummary (задержка запуска +3–6 мес., рост CAPEX/OPEX +20–30%, просадка выручки -25–30%), exitAndTrancheLogic (логика выхода и транши под KPI).
+   - В unverifiedRedFlags явно перечисли пункты с пометкой «Данные не подтверждены / Красный флаг: ...» (или EN equivalent), где цифры/обещания не подтверждены фактами.
+   - В founderHardQuestions сформулируй 4–6 прямых неудобных вопросов основателю.
+4. МАТЕМАТИКА И КОНТУРЫ:
+   - Все суммы в baselineInputs, payrollPerEmployeeMonthly, costStructure.amount указывай в полных единицах валюты (${project.currencyCode}), без сокращений. Сумма costStructure.amount ≈ investmentAmount, сумма sharePct ≈ 100%.
+   - В risks обязательно покрой все 5 контуров: market, legal, operational, hr, regional.
+   - В recommendations заполни analystConclusion, riskMitigationMeasures, crisisAndBottleneckPlan, growthPlanAndMetrics (по 3–5 пунктов).`;
 
   const { text: rawText, modelUsed, modelId, usedFallbackModel } =
     await generateWithRetryAndFallback(
@@ -371,6 +394,11 @@ ${buildDocumentsContext(project.documents)}
           type: Type.OBJECT,
           properties: {
             executiveSummary: { type: Type.STRING },
+            investmentCommitteeVerdict: {
+              type: Type.STRING,
+              description: 'One of: GO, CONDITIONAL_GO, NO_GO',
+            },
+            investmentCommitteeVerdictReason: { type: Type.STRING },
             baselineInputs: {
               type: Type.OBJECT,
               properties: {
@@ -409,6 +437,99 @@ ${buildDocumentsContext(project.documents)}
               items: { type: Type.STRING },
             },
             unitEconomicsSummary: { type: Type.STRING },
+            independentValuation: {
+              type: Type.OBJECT,
+              properties: {
+                claimedProjectValue: { type: Type.STRING },
+                realisticProjectValueRange: { type: Type.STRING },
+                valuationMethodology: { type: Type.STRING },
+                claimedInvestment: { type: Type.STRING },
+                realisticInvestmentAmount: { type: Type.STRING },
+                investmentGapExplanation: { type: Type.STRING },
+                claimedPayback: { type: Type.STRING },
+                realisticPaybackBase: { type: Type.STRING },
+                realisticPaybackStress: { type: Type.STRING },
+                paybackComment: { type: Type.STRING },
+              },
+              required: [
+                'claimedProjectValue',
+                'realisticProjectValueRange',
+                'valuationMethodology',
+                'claimedInvestment',
+                'realisticInvestmentAmount',
+                'investmentGapExplanation',
+                'claimedPayback',
+                'realisticPaybackBase',
+                'realisticPaybackStress',
+                'paybackComment',
+              ],
+            },
+            committeeAudit: {
+              type: Type.OBJECT,
+              properties: {
+                unitEconomicsCheck: { type: Type.STRING },
+                demandAndPainCheck: { type: Type.STRING },
+                competitiveMoatCheck: { type: Type.STRING },
+                teamAndSkinInTheGame: { type: Type.STRING },
+                stressTestSummary: { type: Type.STRING },
+                exitAndTrancheLogic: { type: Type.STRING },
+                unverifiedRedFlags: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                founderHardQuestions: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                'unitEconomicsCheck',
+                'demandAndPainCheck',
+                'competitiveMoatCheck',
+                'teamAndSkinInTheGame',
+                'stressTestSummary',
+                'exitAndTrancheLogic',
+                'unverifiedRedFlags',
+                'founderHardQuestions',
+              ],
+            },
+            legalCompliance: {
+              type: Type.OBJECT,
+              properties: {
+                jurisdictionSummary: { type: Type.STRING },
+                activityClassificationStatus: {
+                  type: Type.STRING,
+                  description: 'One of: provided, missing_suggested',
+                },
+                suggestedBusinessScope: { type: Type.STRING },
+                suggestedActivityType: { type: Type.STRING },
+                suggestedOkedCode: { type: Type.STRING },
+                missingFieldsWarning: { type: Type.STRING },
+                taxCodeChecks: { type: Type.STRING },
+                entrepreneurialCodeChecks: { type: Type.STRING },
+                civilCodeChecks: { type: Type.STRING },
+                criminalCodeRisks: { type: Type.STRING },
+                industryLicensingRequirements: { type: Type.STRING },
+                legalStopFactors: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                'jurisdictionSummary',
+                'activityClassificationStatus',
+                'suggestedBusinessScope',
+                'suggestedActivityType',
+                'suggestedOkedCode',
+                'missingFieldsWarning',
+                'taxCodeChecks',
+                'entrepreneurialCodeChecks',
+                'civilCodeChecks',
+                'criminalCodeRisks',
+                'industryLicensingRequirements',
+                'legalStopFactors',
+              ],
+            },
             risks: {
               type: Type.ARRAY,
               items: {
@@ -466,11 +587,16 @@ ${buildDocumentsContext(project.documents)}
           },
           required: [
             'executiveSummary',
+            'investmentCommitteeVerdict',
+            'investmentCommitteeVerdictReason',
             'baselineInputs',
             'payrollPerEmployeeMonthly',
             'costStructure',
             'revenueDrivers',
             'unitEconomicsSummary',
+            'independentValuation',
+            'committeeAudit',
+            'legalCompliance',
             'risks',
             'assumptions',
             'preLaunchSteps',
@@ -510,8 +636,72 @@ ${buildDocumentsContext(project.documents)}
       : [],
   };
 
+  const rawVerdict = String(parsed.investmentCommitteeVerdict || '').toUpperCase().trim();
+  const normalizedVerdict =
+    rawVerdict === 'GO' || rawVerdict === 'CONDITIONAL_GO' || rawVerdict === 'NO_GO'
+      ? rawVerdict
+      : 'CONDITIONAL_GO';
+
+  const rawVal = parsed.independentValuation || {};
+  const normalizedValuation = {
+    claimedProjectValue: String(rawVal.claimedProjectValue || '—').trim(),
+    realisticProjectValueRange: String(rawVal.realisticProjectValueRange || '—').trim(),
+    valuationMethodology: String(rawVal.valuationMethodology || '').trim(),
+    claimedInvestment: String(rawVal.claimedInvestment || '—').trim(),
+    realisticInvestmentAmount: String(rawVal.realisticInvestmentAmount || '—').trim(),
+    investmentGapExplanation: String(rawVal.investmentGapExplanation || '').trim(),
+    claimedPayback: String(rawVal.claimedPayback || '—').trim(),
+    realisticPaybackBase: String(rawVal.realisticPaybackBase || '—').trim(),
+    realisticPaybackStress: String(rawVal.realisticPaybackStress || '—').trim(),
+    paybackComment: String(rawVal.paybackComment || '').trim(),
+  };
+
+  const rawAudit = parsed.committeeAudit || {};
+  const normalizedAudit = {
+    unitEconomicsCheck: String(rawAudit.unitEconomicsCheck || '').trim(),
+    demandAndPainCheck: String(rawAudit.demandAndPainCheck || '').trim(),
+    competitiveMoatCheck: String(rawAudit.competitiveMoatCheck || '').trim(),
+    teamAndSkinInTheGame: String(rawAudit.teamAndSkinInTheGame || '').trim(),
+    stressTestSummary: String(rawAudit.stressTestSummary || '').trim(),
+    exitAndTrancheLogic: String(rawAudit.exitAndTrancheLogic || '').trim(),
+    unverifiedRedFlags: Array.isArray(rawAudit.unverifiedRedFlags)
+      ? rawAudit.unverifiedRedFlags.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+    founderHardQuestions: Array.isArray(rawAudit.founderHardQuestions)
+      ? rawAudit.founderHardQuestions.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+  };
+
+  const rawLegal = parsed.legalCompliance || {};
+  const normalizedLegal = {
+    jurisdictionSummary: String(rawLegal.jurisdictionSummary || '').trim(),
+    activityClassificationStatus: (hasMissingActivityFields
+      ? 'missing_suggested'
+      : rawLegal.activityClassificationStatus === 'missing_suggested'
+      ? 'missing_suggested'
+      : 'provided') as 'provided' | 'missing_suggested',
+    suggestedBusinessScope: String(
+      rawLegal.suggestedBusinessScope || project.businessScope || ''
+    ).trim(),
+    suggestedActivityType: String(
+      rawLegal.suggestedActivityType || project.activityType || ''
+    ).trim(),
+    suggestedOkedCode: String(rawLegal.suggestedOkedCode || project.okedCode || '').trim(),
+    missingFieldsWarning: String(rawLegal.missingFieldsWarning || '').trim(),
+    taxCodeChecks: String(rawLegal.taxCodeChecks || '').trim(),
+    entrepreneurialCodeChecks: String(rawLegal.entrepreneurialCodeChecks || '').trim(),
+    civilCodeChecks: String(rawLegal.civilCodeChecks || '').trim(),
+    criminalCodeRisks: String(rawLegal.criminalCodeRisks || '').trim(),
+    industryLicensingRequirements: String(rawLegal.industryLicensingRequirements || '').trim(),
+    legalStopFactors: Array.isArray(rawLegal.legalStopFactors)
+      ? rawLegal.legalStopFactors.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+      : [],
+  };
+
   return {
     executiveSummary: parsed.executiveSummary || '',
+    investmentCommitteeVerdict: normalizedVerdict,
+    investmentCommitteeVerdictReason: String(parsed.investmentCommitteeVerdictReason || '').trim(),
     currencyCode: project.currencyCode,
     currencySymbol: project.currencySymbol,
     baselineInputs: {
@@ -529,6 +719,9 @@ ${buildDocumentsContext(project.documents)}
     costStructure: parsed.costStructure ?? [],
     revenueDrivers: parsed.revenueDrivers ?? [],
     unitEconomicsSummary: parsed.unitEconomicsSummary ?? '',
+    independentValuation: normalizedValuation,
+    committeeAudit: normalizedAudit,
+    legalCompliance: normalizedLegal,
     risks: normalizedRisks,
     assumptions: parsed.assumptions ?? [],
     preLaunchSteps: parsed.preLaunchSteps ?? [],
@@ -594,8 +787,12 @@ export async function clientChatWithAnalyst(
     : '';
 
   const existingContoursBlock = project.analysis
-    ? `\nТЕКУЩИЕ ВЫВОДЫ ПО 3 КОНТУРАМ АНАЛИЗА:
+    ? `\nТЕКУЩИЕ ВЫВОДЫ ПО 3 КОНТУРАМ И КОМИТЕТУ:
+- Вердикт комитета: ${project.analysis.investmentCommitteeVerdict || 'CONDITIONAL_GO'} (${project.analysis.investmentCommitteeVerdictReason || ''})
 - Контур 1 (Цифры): ${project.analysis.executiveSummary}
+- Независимая переоценка: стоимость=${project.analysis.independentValuation?.realisticProjectValueRange || '—'}; инвест=${project.analysis.independentValuation?.realisticInvestmentAmount || '—'}; окупаемость=${project.analysis.independentValuation?.realisticPaybackBase || '—'} / стресс=${project.analysis.independentValuation?.realisticPaybackStress || '—'}
+- Красные флаги: ${(project.analysis.committeeAudit?.unverifiedRedFlags || []).join('; ') || 'нет'}
+- Правовой срез (${regionLabel}, ОКЭД=${project.okedCode || project.analysis.legalCompliance?.suggestedOkedCode || 'не указан'}): ${(project.analysis.legalCompliance?.legalStopFactors || []).join('; ') || '—'}
 - Контур 2 (Риски): ${project.analysis.risks.map((r) => `${r.title} (${r.severity})`).join('; ')}
 - Контур 3 (Рекомендации): ${
         project.analysis.recommendations?.analystConclusion ||
@@ -605,13 +802,16 @@ export async function clientChatWithAnalyst(
 
   const replyLangInstruction = language === 'en' ? 'in English' : 'на русском языке';
 
-  const prompt = `Ты — инвестиционный аналитик «IPDS Терминал» (Intelligent Business Systems).
-Отвечай предметно, профессионально и строго ${replyLangInstruction}, опираясь на сохранённый паспорт проекта, три контура анализа («Цифры», «Риски», «Рекомендации»), предыдущую переписку и прикреплённые локальные файлы.
+  const prompt = `Ты — старший инвестиционный и правовой аналитик жёсткого инвест-комитета «IPDS Терминал» (Intelligent Business Systems).
+Отвечай предметно, критически, без приукрашивания и строго ${replyLangInstruction}, опираясь на сохранённый паспорт проекта (включая регион, род/вид деятельности и код ОКЭД), правовые нормы региона «${regionLabel}» (Налоговый, Предпринимательский, Гражданский, Уголовный кодексы, лицензирование), независимую переоценку, три контура анализа («Цифры», «Риски», «Рекомендации»), предыдущую переписку и прикреплённые локальные файлы.
 
 ПАСПОРТ ПРОЕКТА:
 - Проект: ${project.projectName}
 - Регион: ${regionLabel} (${project.currencyCode})
 - Категория: ${project.category || 'Не указана'}
+- Род деятельности: ${project.businessScope?.trim() || 'Не указан'}
+- Вид деятельности: ${project.activityType?.trim() || 'Не указан'}
+- Код ОКЭД / классификатор: ${project.okedCode?.trim() || 'Не указан'}
 - Комментарий: ${project.comment || 'Нет'}
 ${currentModelBlock}
 ${existingContoursBlock}

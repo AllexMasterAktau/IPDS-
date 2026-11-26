@@ -47,6 +47,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [region, setRegion] = useState<RegionPreset>('Казахстан');
   const [customRegion, setCustomRegion] = useState('');
   const [category, setCategory] = useState('');
+  const [businessScope, setBusinessScope] = useState('');
+  const [activityType, setActivityType] = useState('');
+  const [okedCode, setOkedCode] = useState('');
   const [comment, setComment] = useState('');
   const [documents, setDocuments] = useState<LocalDocumentDigest[]>([]);
   const [parsingFiles, setParsingFiles] = useState(false);
@@ -155,6 +158,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           region,
           customRegion: region === 'Свой вариант' ? customRegion.trim() : undefined,
           category: category.trim() || undefined,
+          businessScope: businessScope.trim() || undefined,
+          activityType: activityType.trim() || undefined,
+          okedCode: okedCode.trim() || undefined,
           comment: comment.trim() || undefined,
           currencyCode: regionMeta.currencyCode,
           currencySymbol: regionMeta.currencySymbol,
@@ -170,6 +176,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           region,
           customRegion: region === 'Свой вариант' ? customRegion.trim() : undefined,
           category: category.trim() || undefined,
+          businessScope: businessScope.trim() || undefined,
+          activityType: activityType.trim() || undefined,
+          okedCode: okedCode.trim() || undefined,
           comment: comment.trim() || undefined,
           currencyCode: regionMeta.currencyCode,
           currencySymbol: regionMeta.currencySymbol,
@@ -219,6 +228,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setProjectName('');
     setCustomRegion('');
     setCategory('');
+    setBusinessScope('');
+    setActivityType('');
+    setOkedCode('');
     setComment('');
     setDocuments([]);
     setCreatedNotice(null);
@@ -436,6 +448,47 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   placeholder={t.createModal.placeholderComment}
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-[#3A3D42] mb-1.5">
+                  {t.createModal.labelBusinessScope}
+                </label>
+                <input
+                  type="text"
+                  value={businessScope}
+                  onChange={(e) => setBusinessScope(e.target.value)}
+                  placeholder={t.createModal.placeholderBusinessScope}
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#3A3D42] mb-1.5">
+                  {t.createModal.labelActivityType}
+                </label>
+                <input
+                  type="text"
+                  value={activityType}
+                  onChange={(e) => setActivityType(e.target.value)}
+                  placeholder={t.createModal.placeholderActivityType}
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#3A3D42] mb-1.5">
+                  {t.createModal.labelOkedCode}
+                </label>
+                <input
+                  type="text"
+                  value={okedCode}
+                  onChange={(e) => setOkedCode(e.target.value)}
+                  placeholder={t.createModal.placeholderOkedCode}
                   className="w-full px-3.5 py-2.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
                 />
               </div>

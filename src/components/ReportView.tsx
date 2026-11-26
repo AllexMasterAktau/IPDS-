@@ -2,11 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
   CheckCircle2,
   Download,
   ExternalLink,
+  Gavel,
+  HelpCircle,
   Printer,
   RotateCcw,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
@@ -26,7 +30,11 @@ import {
   formatCompactMoney,
   formatMoney,
   getCurrencySymbol,
+  getEffectiveCommitteeAudit,
+  getEffectiveCommitteeVerdict,
+  getEffectiveIndependentValuation,
   getEffectiveInputs,
+  getEffectiveLegalCompliance,
   getEffectiveRecommendations,
   getFxConversionFactor,
   getRegionDisplayLabel,
@@ -46,6 +54,14 @@ interface ReportViewProps {
   project: ProjectRecord;
   isStandaloneWindow?: boolean;
   onUpdateOverrides: (overrides: Partial<FinancialInputs>) => void;
+  onUpdateProjectMeta?: (
+    patch: Partial<
+      Pick<
+        ProjectRecord,
+        'businessScope' | 'activityType' | 'okedCode' | 'region' | 'customRegion'
+      >
+    >
+  ) => void;
   onRunAnalysis?: () => void;
   analyzing?: boolean;
 }
@@ -89,6 +105,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
   project,
   isStandaloneWindow = false,
   onUpdateOverrides,
+  onUpdateProjectMeta,
   onRunAnalysis,
   analyzing = false,
 }) => {
@@ -96,11 +113,16 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const [riskFilter, setRiskFilter] = useState<'all' | RiskDimension>('all');
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [appliedSuggestedMeta, setAppliedSuggestedMeta] = useState(false);
   const pdfSheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void preloadPdfFonts();
   }, []);
+
+  useEffect(() => {
+    setAppliedSuggestedMeta(false);
+  }, [project.id, project.analysis?.generatedAt]);
 
   const analysis = project.analysis;
   const baseCurrency = normalizeCurrencyCode(analysis?.currencyCode || project.currencyCode);
@@ -135,7 +157,36 @@ export const ReportView: React.FC<ReportViewProps> = ({
     return getEffectiveRecommendations(analysis, metrics, language);
   }, [analysis, metrics, language]);
 
-  if (!analysis || !effectiveInputs || !metrics || !recommendations) {
+  const committeeVerdict = useMemo(() => {
+    if (!analysis || !metrics) return null;
+    return getEffectiveCommitteeVerdict(analysis, metrics, language);
+  }, [analysis, metrics, language]);
+
+  const independentValuation = useMemo(() => {
+    if (!analysis || !metrics) return null;
+    return getEffectiveIndependentValuation(analysis, metrics, displaySymbol, language);
+  }, [analysis, metrics, displaySymbol, language]);
+
+  const committeeAudit = useMemo(() => {
+    if (!analysis || !metrics) return null;
+    return getEffectiveCommitteeAudit(analysis, metrics, language);
+  }, [analysis, metrics, language]);
+
+  const legalCompliance = useMemo(() => {
+    if (!analysis) return null;
+    return getEffectiveLegalCompliance(project, analysis, language);
+  }, [project, analysis, language]);
+
+  if (
+    !analysis ||
+    !effectiveInputs ||
+    !metrics ||
+    !recommendations ||
+    !committeeVerdict ||
+    !independentValuation ||
+    !committeeAudit ||
+    !legalCompliance
+  ) {
     return (
       <div className="w-full max-w-[1600px] mx-auto py-12 px-4 sm:px-8 lg:px-10">
         <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-8 text-center space-y-4">
@@ -260,12 +311,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
           <div className="text-xs text-[#5C6066] leading-snug">
             {regionLabel} · {displayCurrency} ({displaySymbol}) · {t.report.initiator}:{' '}
             {project.fullName}
+            {project.okedCode ? ` · ОКЭД ${project.okedCode}` : ''}
             {hasOverrides ? ` · ${t.report.manuallyRecalculated}` : ''}
             {fxNoteText}
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug mt-0.5">
             {project.projectName}
           </h2>
+          {(project.businessScope || project.activityType) && (
+            <div className="text-[11px] text-[#5C6066] mt-0.5">
+              {[project.businessScope, project.activityType].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -309,6 +366,38 @@ export const ReportView: React.FC<ReportViewProps> = ({
           {pdfError}
         </div>
       )}
+
+      {/* Вердикт жёсткого инвест-комитета */}
+      <section
+        className={`no-print rounded-xl border p-4 sm:p-5 space-y-1.5 shadow-[0_2px_10px_rgba(22,24,26,0.03)] ${
+          committeeVerdict.verdict === 'GO'
+            ? 'bg-emerald-50/70 border-emerald-300'
+            : committeeVerdict.verdict === 'NO_GO'
+            ? 'bg-rose-50/70 border-rose-300'
+            : 'bg-amber-50/70 border-amber-300'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#1E2022]">
+            <Gavel className="w-4 h-4 text-[#9A6E2E] shrink-0" />
+            <span>{t.report.verdictTitle}</span>
+          </div>
+          <span
+            className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
+              committeeVerdict.verdict === 'GO'
+                ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
+                : committeeVerdict.verdict === 'NO_GO'
+                ? 'bg-rose-100 border-rose-300 text-rose-900'
+                : 'bg-amber-100 border-amber-300 text-amber-900'
+            }`}
+          >
+            {t.report.verdictLabels[committeeVerdict.verdict]}
+          </span>
+        </div>
+        <p className="text-xs sm:text-[13px] text-[#1E2022] leading-snug">
+          {committeeVerdict.reason}
+        </p>
+      </section>
 
       {/* 6 ключевых показателей проекта */}
       <section className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -563,6 +652,112 @@ export const ReportView: React.FC<ReportViewProps> = ({
             </ul>
           </div>
         </div>
+
+        {/* Независимая переоценка терминала */}
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
+          <div>
+            <h4 className="text-sm font-bold text-[#1E2022]">{t.report.valuationTitle}</h4>
+            <p className="text-xs text-[#5C6066] mt-0.5">{t.report.valuationSubtitle}</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3.5 space-y-2 text-xs leading-snug">
+              <div className="font-semibold text-[#9A6E2E]">{t.report.valProjectTitle}</div>
+              <div className="space-y-1">
+                <div className="text-[11px] text-[#5C6066]">{t.report.claimedLabel}</div>
+                <div className="text-[#3A3D42]">{independentValuation.claimedProjectValue}</div>
+              </div>
+              <div className="pt-1.5 border-t border-[#EDE8DC] space-y-1">
+                <div className="text-[11px] font-semibold text-[#1E2022]">
+                  {t.report.realisticLabel}
+                </div>
+                <div className="font-bold text-[#1E2022] font-mono-tabular">
+                  {independentValuation.realisticProjectValueRange}
+                </div>
+                {independentValuation.valuationMethodology && (
+                  <p className="text-[11px] text-[#5C6066]">
+                    {independentValuation.valuationMethodology}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3.5 space-y-2 text-xs leading-snug">
+              <div className="font-semibold text-[#9A6E2E]">{t.report.valInvestmentTitle}</div>
+              <div className="space-y-1">
+                <div className="text-[11px] text-[#5C6066]">{t.report.claimedLabel}</div>
+                <div className="text-[#3A3D42]">{independentValuation.claimedInvestment}</div>
+              </div>
+              <div className="pt-1.5 border-t border-[#EDE8DC] space-y-1">
+                <div className="text-[11px] font-semibold text-[#1E2022]">
+                  {t.report.realisticLabel}
+                </div>
+                <div className="font-bold text-[#9A6E2E] font-mono-tabular">
+                  {independentValuation.realisticInvestmentAmount}
+                </div>
+                {independentValuation.investmentGapExplanation && (
+                  <p className="text-[11px] text-[#5C6066]">
+                    {independentValuation.investmentGapExplanation}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3.5 space-y-2 text-xs leading-snug">
+              <div className="font-semibold text-[#9A6E2E]">{t.report.valPaybackTitle}</div>
+              <div className="space-y-1">
+                <div className="text-[11px] text-[#5C6066]">{t.report.claimedLabel}</div>
+                <div className="text-[#3A3D42]">{independentValuation.claimedPayback}</div>
+              </div>
+              <div className="pt-1.5 border-t border-[#EDE8DC] space-y-1">
+                <div className="text-[11px] font-semibold text-[#1E2022]">
+                  {t.report.realisticLabel}
+                </div>
+                <div className="font-semibold text-[#1E2022]">
+                  {t.report.valBasePayback}:{' '}
+                  <span className="font-mono-tabular text-emerald-700">
+                    {independentValuation.realisticPaybackBase}
+                  </span>
+                </div>
+                <div className="font-semibold text-[#1E2022]">
+                  {t.report.valStressPayback}:{' '}
+                  <span className="font-mono-tabular text-rose-700">
+                    {independentValuation.realisticPaybackStress}
+                  </span>
+                </div>
+                {independentValuation.paybackComment && (
+                  <p className="text-[11px] text-[#5C6066]">
+                    {independentValuation.paybackComment}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Аудит жёсткого инвест-комитета */}
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
+          <h4 className="text-sm font-bold text-[#1E2022]">{t.report.auditTitle}</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(
+              [
+                { label: t.report.auditUnitEconomics, val: committeeAudit.unitEconomicsCheck },
+                { label: t.report.auditDemand, val: committeeAudit.demandAndPainCheck },
+                { label: t.report.auditMoat, val: committeeAudit.competitiveMoatCheck },
+                { label: t.report.auditTeam, val: committeeAudit.teamAndSkinInTheGame },
+                { label: t.report.auditStressTest, val: committeeAudit.stressTestSummary },
+                { label: t.report.auditExitTranches, val: committeeAudit.exitAndTrancheLogic },
+              ] as const
+            ).map((cell) => (
+              <div
+                key={cell.label}
+                className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1 text-xs leading-snug"
+              >
+                <div className="font-semibold text-[#9A6E2E]">{cell.label}</div>
+                <p className="text-[#3A3D42]">{cell.val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* КОНТУР 2: Риски и ограничения */}
@@ -638,6 +833,147 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 <li key={i}>{step}</li>
               ))}
             </ul>
+          </div>
+        </div>
+
+        {/* Правовой и регуляторный срез по региону и ОКЭД */}
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-2 text-sm font-bold text-[#1E2022]">
+              <Scale className="w-4 h-4 text-[#9A6E2E] shrink-0" />
+              <span>
+                {t.report.legalTitle}: {regionLabel}
+              </span>
+            </div>
+            {(project.okedCode || legalCompliance.suggestedOkedCode) && (
+              <span className="px-2.5 py-0.5 rounded bg-[#FFFFFF] border border-[#D8C7A5] font-mono-tabular text-xs font-semibold text-[#9A6E2E]">
+                ОКЭД: {project.okedCode || legalCompliance.suggestedOkedCode}
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-[#3A3D42] leading-snug">
+            {legalCompliance.jurisdictionSummary}
+          </p>
+
+          {(legalCompliance.activityClassificationStatus === 'missing_suggested' ||
+            legalCompliance.missingFieldsWarning) && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2 text-xs leading-snug">
+              <div className="font-semibold text-amber-900">
+                {t.report.legalMissingAlert}{' '}
+                <span className="font-normal">{legalCompliance.missingFieldsWarning}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                <div className="rounded bg-white border border-amber-200 px-2.5 py-1.5">
+                  <div className="text-[#5C6066]">{t.report.legalSuggestedScope}</div>
+                  <div className="font-semibold text-[#1E2022]">
+                    {legalCompliance.suggestedBusinessScope || '—'}
+                  </div>
+                </div>
+                <div className="rounded bg-white border border-amber-200 px-2.5 py-1.5">
+                  <div className="text-[#5C6066]">{t.report.legalSuggestedActivity}</div>
+                  <div className="font-semibold text-[#1E2022]">
+                    {legalCompliance.suggestedActivityType || '—'}
+                  </div>
+                </div>
+                <div className="rounded bg-white border border-amber-200 px-2.5 py-1.5">
+                  <div className="text-[#5C6066]">{t.report.legalSuggestedOked}</div>
+                  <div className="font-mono-tabular font-semibold text-[#9A6E2E]">
+                    {legalCompliance.suggestedOkedCode || '—'}
+                  </div>
+                </div>
+              </div>
+              {onUpdateProjectMeta && (
+                <div>
+                  <button
+                    type="button"
+                    disabled={appliedSuggestedMeta}
+                    onClick={() => {
+                      onUpdateProjectMeta({
+                        businessScope:
+                          project.businessScope || legalCompliance.suggestedBusinessScope,
+                        activityType:
+                          project.activityType || legalCompliance.suggestedActivityType,
+                        okedCode: project.okedCode || legalCompliance.suggestedOkedCode,
+                      });
+                      setAppliedSuggestedMeta(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] disabled:opacity-70 text-[#F5F3EE] text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    {appliedSuggestedMeta && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                    <span>
+                      {appliedSuggestedMeta
+                        ? t.report.legalAppliedSuggested
+                        : t.report.legalApplySuggested}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {(
+              [
+                { label: t.report.legalTaxCode, val: legalCompliance.taxCodeChecks },
+                {
+                  label: t.report.legalEntrepreneurialCode,
+                  val: legalCompliance.entrepreneurialCodeChecks,
+                },
+                { label: t.report.legalCivilCode, val: legalCompliance.civilCodeChecks },
+                { label: t.report.legalCriminalCode, val: legalCompliance.criminalCodeRisks },
+                {
+                  label: t.report.legalLicensing,
+                  val: legalCompliance.industryLicensingRequirements,
+                },
+              ] as const
+            ).map((block) => (
+              <div
+                key={block.label}
+                className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1 text-xs leading-snug"
+              >
+                <div className="font-semibold text-[#1E2022]">{block.label}</div>
+                <p className="text-[#3A3D42]">{block.val}</p>
+              </div>
+            ))}
+
+            {legalCompliance.legalStopFactors.length > 0 && (
+              <div className="rounded-lg bg-rose-50/70 border border-rose-200 p-3 space-y-1 text-xs leading-snug">
+                <div className="font-semibold text-rose-800">{t.report.legalStopFactors}</div>
+                <ul className="list-disc pl-4 space-y-1 text-rose-900">
+                  {legalCompliance.legalStopFactors.map((sf, i) => (
+                    <li key={i}>{sf}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Красные флаги и неудобные вопросы основателю */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div className="rounded-xl bg-rose-50/60 border border-rose-200 shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-rose-900">
+              <ShieldAlert className="w-4 h-4 text-rose-700 shrink-0" />
+              <span>{t.report.redFlagsTitle}</span>
+            </div>
+            <ul className="space-y-1 text-xs text-rose-900 leading-snug list-disc pl-4">
+              {committeeAudit.unverifiedRedFlags.map((flag, i) => (
+                <li key={i}>{flag}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 space-y-2">
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#1E2022]">
+              <HelpCircle className="w-4 h-4 text-[#9A6E2E] shrink-0" />
+              <span>{t.report.hardQuestionsTitle}</span>
+            </div>
+            <ol className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
+              {committeeAudit.founderHardQuestions.map((q, i) => (
+                <li key={i}>{q}</li>
+              ))}
+            </ol>
           </div>
         </div>
       </section>
@@ -735,6 +1071,15 @@ export const ReportView: React.FC<ReportViewProps> = ({
             </div>
           </div>
 
+          {/* Вердикт комитета в печатной версии */}
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs space-y-1">
+            <div className="flex items-center justify-between font-bold text-slate-900">
+              <span>{t.report.verdictTitle}</span>
+              <span>{t.report.verdictLabels[committeeVerdict.verdict]}</span>
+            </div>
+            <p className="text-slate-700 leading-snug">{committeeVerdict.reason}</p>
+          </div>
+
           {/* 6 KPI в PDF */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
@@ -807,6 +1152,27 @@ export const ReportView: React.FC<ReportViewProps> = ({
               currencySymbol={displaySymbol}
               theme="light"
             />
+
+            {/* Независимая переоценка и аудит комитета в печатной версии */}
+            <div className="grid grid-cols-3 gap-3 text-xs pt-2">
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-amber-800">{t.report.valProjectTitle}</div>
+                <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedProjectValue}</div>
+                <div className="font-bold text-slate-900">{independentValuation.realisticProjectValueRange}</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-amber-800">{t.report.valInvestmentTitle}</div>
+                <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedInvestment}</div>
+                <div className="font-bold text-slate-900">{independentValuation.realisticInvestmentAmount}</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+                <div className="font-semibold text-amber-800">{t.report.valPaybackTitle}</div>
+                <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedPayback}</div>
+                <div className="font-bold text-slate-900">
+                  {independentValuation.realisticPaybackBase} / {independentValuation.realisticPaybackStress}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Контур 2 в PDF */}
@@ -814,6 +1180,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
             <h2 className="text-base font-bold border-b border-slate-200 pb-1.5">
               {t.report.contour2Title}
             </h2>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5">
+              <div className="font-semibold text-slate-900">
+                {t.report.legalTitle}: {regionLabel} (ОКЭД: {project.okedCode || legalCompliance.suggestedOkedCode || '—'})
+              </div>
+              <p className="text-slate-700">{legalCompliance.jurisdictionSummary}</p>
+              <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
+                <div><span className="font-semibold">{t.report.legalTaxCode}:</span> {legalCompliance.taxCodeChecks}</div>
+                <div><span className="font-semibold">{t.report.legalEntrepreneurialCode}:</span> {legalCompliance.entrepreneurialCodeChecks}</div>
+                <div><span className="font-semibold">{t.report.legalCivilCode}:</span> {legalCompliance.civilCodeChecks}</div>
+                <div><span className="font-semibold">{t.report.legalCriminalCode}:</span> {legalCompliance.criminalCodeRisks}</div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {analysis.risks.map((risk) => {
                 const sev = getSeverityMeta(risk.severity, language, true);
@@ -838,6 +1216,25 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   </div>
                 );
               })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-2 text-xs">
+              <div>
+                <div className="font-semibold mb-1">{t.report.redFlagsTitle}</div>
+                <ul className="list-disc pl-4 space-y-1 text-rose-800">
+                  {committeeAudit.unverifiedRedFlags.map((f, i) => (
+                    <li key={i}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div className="font-semibold mb-1">{t.report.hardQuestionsTitle}</div>
+                <ol className="list-decimal pl-4 space-y-1 text-slate-700">
+                  {committeeAudit.founderHardQuestions.map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ol>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-2 text-xs">

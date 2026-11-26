@@ -1,12 +1,17 @@
 import {
   CashflowPoint,
+  CommitteeAudit,
   CurrencyCode,
   DerivedMetrics,
   FinancialInputs,
   FxRateMap,
+  IndependentValuation,
+  InvestmentCommitteeVerdict,
   Language,
+  LegalComplianceCut,
   ProjectAnalysis,
   ProjectRecommendations,
+  ProjectRecord,
   RegionPreset,
 } from '../types/ipds';
 
@@ -360,5 +365,275 @@ export function getEffectiveRecommendations(
     crisisAndBottleneckPlan,
     growthPlanAndMetrics,
   };
+}
+
+export function getEffectiveCommitteeVerdict(
+  analysis: ProjectAnalysis,
+  metrics: DerivedMetrics,
+  language: Language = 'ru'
+): {
+  verdict: InvestmentCommitteeVerdict;
+  reason: string;
+} {
+  if (
+    analysis.investmentCommitteeVerdict === 'GO' ||
+    analysis.investmentCommitteeVerdict === 'CONDITIONAL_GO' ||
+    analysis.investmentCommitteeVerdict === 'NO_GO'
+  ) {
+    return {
+      verdict: analysis.investmentCommitteeVerdict,
+      reason:
+        analysis.investmentCommitteeVerdictReason?.trim() ||
+        analysis.recommendations?.analystConclusion ||
+        analysis.executiveSummary,
+    };
+  }
+
+  const highRisksCount = analysis.risks.filter((r) => r.severity === 'high').length;
+  let verdict: InvestmentCommitteeVerdict = 'CONDITIONAL_GO';
+  if (metrics.monthlyProfit <= 0 || (metrics.paybackMonths !== null && metrics.paybackMonths > 48)) {
+    verdict = 'NO_GO';
+  } else if (metrics.ebitdaMarginPct >= 22 && highRisksCount <= 1 && metrics.paybackMonths !== null && metrics.paybackMonths <= 24) {
+    verdict = 'GO';
+  }
+
+  const reason =
+    analysis.investmentCommitteeVerdictReason?.trim() ||
+    (language === 'en'
+      ? `Preliminary committee stance based on EBITDA margin (${metrics.ebitdaMarginPct}%), annual ROI (${metrics.roiAnnualPct}%), and ${highRisksCount} high-severity risk(s).`
+      : `Позиция инвест-комитета на базе EBITDA маржи (${metrics.ebitdaMarginPct}%), годового ROI (${metrics.roiAnnualPct}%) и ${highRisksCount} риск(ов) высокого уровня.`);
+
+  return { verdict, reason };
+}
+
+export function getEffectiveIndependentValuation(
+  analysis: ProjectAnalysis,
+  metrics: DerivedMetrics,
+  displaySymbol: string,
+  language: Language = 'ru'
+): IndependentValuation {
+  const v = analysis.independentValuation;
+  const hasReal =
+    Boolean(v?.realisticProjectValueRange?.trim()) &&
+    Boolean(v?.realisticInvestmentAmount?.trim()) &&
+    Boolean(v?.realisticPaybackBase?.trim());
+
+  if (hasReal && v) {
+    return {
+      claimedProjectValue: v.claimedProjectValue?.trim() || '—',
+      realisticProjectValueRange: v.realisticProjectValueRange.trim(),
+      valuationMethodology: v.valuationMethodology?.trim() || '',
+      claimedInvestment: v.claimedInvestment?.trim() || '—',
+      realisticInvestmentAmount: v.realisticInvestmentAmount.trim(),
+      investmentGapExplanation: v.investmentGapExplanation?.trim() || '',
+      claimedPayback: v.claimedPayback?.trim() || '—',
+      realisticPaybackBase: v.realisticPaybackBase.trim(),
+      realisticPaybackStress: v.realisticPaybackStress?.trim() || '—',
+      paybackComment: v.paybackComment?.trim() || '',
+    };
+  }
+
+  const ebitdaAnnual = Math.max(0, metrics.annualProfit);
+  const lowVal = Math.round(ebitdaAnnual * 1.5);
+  const highVal = Math.round(ebitdaAnnual * 3.0);
+  const stressPayback = metrics.paybackMonths
+    ? Math.round(metrics.paybackMonths * 1.45)
+    : null;
+
+  return language === 'en'
+    ? {
+        claimedProjectValue: 'Not explicitly verified in documents',
+        realisticProjectValueRange:
+          ebitdaAnnual > 0
+            ? `${formatCompactMoney(lowVal, displaySymbol, 'en')} – ${formatCompactMoney(highVal, displaySymbol, 'en')}`
+            : formatCompactMoney(metrics.investmentAmount * 0.7, displaySymbol, 'en'),
+        valuationMethodology:
+          'Estimated at 1.5x–3.0x stabilized annual EBITDA adjusted for launch stage and execution risks.',
+        claimedInvestment: formatCompactMoney(metrics.investmentAmount, displaySymbol, 'en'),
+        realisticInvestmentAmount: formatCompactMoney(metrics.projectCost, displaySymbol, 'en'),
+        investmentGapExplanation:
+          'Includes working capital buffer, launch slippage reserve, and mandatory compliance costs.',
+        claimedPayback: metrics.paybackMonths
+          ? `${metrics.paybackMonths} mo. (model baseline)`
+          : '> 60 mo.',
+        realisticPaybackBase: metrics.paybackMonths
+          ? `${metrics.paybackMonths} mo.`
+          : '> 60 mo.',
+        realisticPaybackStress: stressPayback ? `${stressPayback} mo.` : '> 60 mo.',
+        paybackComment:
+          'Stress scenario assumes +25% OPEX/CAPEX overrun and a 3-month launch & revenue ramp delay.',
+      }
+    : {
+        claimedProjectValue: 'В документах не подтверждена фактами',
+        realisticProjectValueRange:
+          ebitdaAnnual > 0
+            ? `${formatCompactMoney(lowVal, displaySymbol, 'ru')} – ${formatCompactMoney(highVal, displaySymbol, 'ru')}`
+            : formatCompactMoney(metrics.investmentAmount * 0.7, displaySymbol, 'ru'),
+        valuationMethodology:
+          'Оценка по мультипликатору 1.5x–3.0x годовой EBITDA с дисконтом за стадию запуска и операционные риски.',
+        claimedInvestment: formatCompactMoney(metrics.investmentAmount, displaySymbol, 'ru'),
+        realisticInvestmentAmount: formatCompactMoney(metrics.projectCost, displaySymbol, 'ru'),
+        investmentGapExplanation:
+          'Учитывает оборотный капитал, скрытые пусконаладочные и регуляторные издержки и резервный буфер.',
+        claimedPayback: metrics.paybackMonths
+          ? `${metrics.paybackMonths} мес. (расчётная база)`
+          : '> 60 мес.',
+        realisticPaybackBase: metrics.paybackMonths ? `${metrics.paybackMonths} мес.` : '> 60 мес.',
+        realisticPaybackStress: stressPayback ? `${stressPayback} мес.` : '> 60 мес.',
+        paybackComment:
+          'Стресс-сценарий закладывает удорожание сметы/OPEX на 20–25% и сдвиг выхода на плановую выручку.',
+      };
+}
+
+export function getEffectiveCommitteeAudit(
+  analysis: ProjectAnalysis,
+  metrics: DerivedMetrics,
+  language: Language = 'ru'
+): CommitteeAudit {
+  const a = analysis.committeeAudit;
+  if (a && a.unitEconomicsCheck && a.stressTestSummary) {
+    return {
+      unitEconomicsCheck: a.unitEconomicsCheck,
+      demandAndPainCheck: a.demandAndPainCheck,
+      competitiveMoatCheck: a.competitiveMoatCheck,
+      teamAndSkinInTheGame: a.teamAndSkinInTheGame,
+      stressTestSummary: a.stressTestSummary,
+      exitAndTrancheLogic: a.exitAndTrancheLogic,
+      unverifiedRedFlags: Array.isArray(a.unverifiedRedFlags) ? a.unverifiedRedFlags.filter(Boolean) : [],
+      founderHardQuestions: Array.isArray(a.founderHardQuestions) ? a.founderHardQuestions.filter(Boolean) : [],
+    };
+  }
+
+  return language === 'en'
+    ? {
+        unitEconomicsCheck:
+          analysis.unitEconomicsSummary ||
+          `EBITDA margin ${metrics.ebitdaMarginPct}%. LTV/CAC and monthly burn rate require primary invoice & conversion verification.`,
+        demandAndPainCheck:
+          'Market pain is stated conceptually; signed LOIs, pilot prepayments, and repeat purchase evidence must be verified.',
+        competitiveMoatCheck:
+          'Defensibility relies on execution speed and unit cost discipline; switching costs and regulatory barriers need validation.',
+        teamAndSkinInTheGame:
+          'Founder operational track record and personal capital commitment (skin in the game) are not documented yet.',
+        stressTestSummary: `With +20% cost overrun and -25% revenue ramp, monthly EBITDA drops sharply; liquidity buffer for ${metrics.launchMonths + 3} mo. is critical.`,
+        exitAndTrancheLogic:
+          'Funding should be released in KPI-gated tranches (legal/licensing clearance -> pilot revenue -> unit-economy breakeven).',
+        unverifiedRedFlags: [
+          'Unverified baseline demand assumptions — confirm signed contracts or pilot pipeline before full CAPEX deployment.',
+        ],
+        founderHardQuestions: [
+          'What verified customer prepayments or signed B2B/B2C pilots exist right now?',
+          'How much personal capital have founders invested alongside external funding?',
+          'What happens to cash runway if launch is delayed by 4 months and CAC doubles?',
+        ],
+      }
+    : {
+        unitEconomicsCheck:
+          analysis.unitEconomicsSummary ||
+          `EBITDA маржа ${metrics.ebitdaMarginPct}%. Показатели LTV/CAC и Burn Rate требуют сверки с первичной статистикой продаж.`,
+        demandAndPainCheck:
+          'Рыночная боль заявлена на уровне концепции; требуется подтверждение спроса договорами, предзаказами или пилотной конверсией.',
+        competitiveMoatCheck:
+          'Конкурентное преимущество («ров») требует защиты через себестоимость, эксклюзивные каналы или регуляторный барьер.',
+        teamAndSkinInTheGame:
+          'Личный финансовый вклад основателей («шкура на кону») и релевантный отраслевой опыт команды не подтверждены документами.',
+        stressTestSummary: `При задержке запуска на 3–4 мес., росте расходов на 20% и просадке выручки на 25% критичен резерв ликвидности минимум на ${metrics.launchMonths + 3} мес.`,
+        exitAndTrancheLogic:
+          'Финансирование целесообразно дробить на транши под KPI: регистрация/лицензии -> подтверждение первых продаж -> выход в операционный ноль.',
+        unverifiedRedFlags: [
+          'Данные не подтверждены / Красный флаг: плановая выручка и конверсия в модели не подкреплены первичными контрактами или статистикой пилота.',
+        ],
+        founderHardQuestions: [
+          'Какие фактические предзаказы, LOI или оплаченные пилоты подтверждают спрос на сегодня?',
+          'Какую долю риска и собственных средств основатели вкладывают в проект («шкура на кону»)?',
+          'За счёт чего проект выживет при задержке запуска на 4 месяца и двукратном росте стоимости привлечения клиента?',
+        ],
+      };
+}
+
+export function getEffectiveLegalCompliance(
+  project: ProjectRecord,
+  analysis: ProjectAnalysis,
+  language: Language = 'ru'
+): LegalComplianceCut {
+  const lc = analysis.legalCompliance;
+  const hasMissingInputs =
+    !project.businessScope?.trim() ||
+    !project.activityType?.trim() ||
+    !project.okedCode?.trim();
+
+  if (lc && lc.jurisdictionSummary && lc.taxCodeChecks) {
+    return {
+      jurisdictionSummary: lc.jurisdictionSummary,
+      activityClassificationStatus: hasMissingInputs
+        ? 'missing_suggested'
+        : lc.activityClassificationStatus || 'provided',
+      suggestedBusinessScope: lc.suggestedBusinessScope || project.businessScope || '',
+      suggestedActivityType: lc.suggestedActivityType || project.activityType || '',
+      suggestedOkedCode: lc.suggestedOkedCode || project.okedCode || '',
+      missingFieldsWarning: lc.missingFieldsWarning || '',
+      taxCodeChecks: lc.taxCodeChecks,
+      entrepreneurialCodeChecks: lc.entrepreneurialCodeChecks,
+      civilCodeChecks: lc.civilCodeChecks,
+      criminalCodeRisks: lc.criminalCodeRisks,
+      industryLicensingRequirements: lc.industryLicensingRequirements,
+      legalStopFactors: Array.isArray(lc.legalStopFactors)
+        ? lc.legalStopFactors.filter(Boolean)
+        : [],
+    };
+  }
+
+  const regionLabel = getRegionDisplayLabel(project.region, project.customRegion, language);
+  const legalRisks = analysis.risks.filter((r) => r.dimension === 'legal' || r.dimension === 'regional');
+
+  return language === 'en'
+    ? {
+        jurisdictionSummary: `Jurisdiction: ${regionLabel}. Preliminary legal & regulatory review across tax, corporate/entrepreneurial, civil, criminal compliance, and sector licensing.`,
+        activityClassificationStatus: hasMissingInputs ? 'missing_suggested' : 'provided',
+        suggestedBusinessScope: project.businessScope || project.category || 'Commercial & services sector',
+        suggestedActivityType: project.activityType || project.projectName,
+        suggestedOkedCode: project.okedCode || 'To be refined per national classifier (OKED/OKVED/NACE)',
+        missingFieldsWarning: hasMissingInputs
+          ? 'Business scope, activity type, or OKED/NACE classifier code is not filled in — specify exact codes before legal registration and tax regime selection.'
+          : '',
+        taxCodeChecks:
+          'Verify eligibility for special vs. general tax regimes, VAT registration threshold, withholding taxes, and payroll contributions in the selected jurisdiction.',
+        entrepreneurialCodeChecks:
+          'Ensure entity form, charter capital, SME status requirements, and state support / antitrust restrictions comply with entrepreneurial legislation.',
+        civilCodeChecks:
+          'Audit customer/supplier contracts, IP ownership assignment, liability caps, SLA penalties, and lease/collateral terms under the Civil Code.',
+        criminalCodeRisks:
+          'Assess compliance risks related to unlicensed regulated activity, tax evasion thresholds, AML/KYC controls, and false reporting liability.',
+        industryLicensingRequirements:
+          legalRisks[0]?.description ||
+          'Check mandatory sector permits, sanitary/fire approvals, data protection, and certification rules before commercial launch.',
+        legalStopFactors: legalRisks.length > 0
+          ? legalRisks.map((r) => `${r.title}: ${r.mitigation}`)
+          : ['Confirm licensing, tax registration, and IP/contract clearance prior to first commercial revenue.'],
+      }
+    : {
+        jurisdictionSummary: `Юрисдикция: ${regionLabel}. Проверка проекта по Налоговому, Предпринимательскому, Гражданскому, Уголовному кодексам и профильным отраслевым нормам.`,
+        activityClassificationStatus: hasMissingInputs ? 'missing_suggested' : 'provided',
+        suggestedBusinessScope: project.businessScope || project.category || 'Коммерческая деятельность / услуги',
+        suggestedActivityType: project.activityType || project.projectName,
+        suggestedOkedCode: project.okedCode || 'Уточнить код по национальному классификатору ОКЭД / ОКВЭД',
+        missingFieldsWarning: hasMissingInputs
+          ? 'Не заполнены род деятельности, вид деятельности или код ОКЭД — необходимо указать точный классификатор для выбора налогового режима и проверки лицензий.'
+          : '',
+        taxCodeChecks:
+          'Проверить пороги НДС, допустимость специального налогового режима по виду деятельности/ОКЭД, налоги у источника выплаты и нагрузку на ФОТ по Налоговому кодексу.',
+        entrepreneurialCodeChecks:
+          'Сверить требования к ОПФ, статусу субъекта предпринимательства, уставному капиталу, антимонопольным ограничениям и условиям госрегулирования.',
+        civilCodeChecks:
+          'Проверить договорную обвязку с клиентами и подрядчиками (ГК), передачу прав на ИС/ПО, ответственность сторон, неустойки и обеспечение обязательств.',
+        criminalCodeRisks:
+          'Исключить риски незаконного предпринимательства без лицензии, уклонения от уплаты налогов, фиктивных сделок, нарушений AML/персональных данных и ответственности должностных лиц (УК).',
+        industryLicensingRequirements:
+          legalRisks[0]?.description ||
+          'Проверить обязательное лицензирование, уведомления о начале деятельности, отраслевую сертификацию, требования СЭС/пожарной безопасности и защиты данных.',
+        legalStopFactors: legalRisks.length > 0
+          ? legalRisks.map((r) => `${r.title}: ${r.mitigation}`)
+          : ['До старта выручки подтвердить отсутствие запретов по выбранному коду ОКЭД и закрыть разрешительные процедуры.'],
+      };
 }
 

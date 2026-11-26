@@ -84,8 +84,51 @@ export interface ProjectRecommendations {
   growthPlanAndMetrics: string[];
 }
 
+export type InvestmentCommitteeVerdict = 'GO' | 'CONDITIONAL_GO' | 'NO_GO';
+
+export interface IndependentValuation {
+  claimedProjectValue: string;
+  realisticProjectValueRange: string;
+  valuationMethodology: string;
+  claimedInvestment: string;
+  realisticInvestmentAmount: string;
+  investmentGapExplanation: string;
+  claimedPayback: string;
+  realisticPaybackBase: string;
+  realisticPaybackStress: string;
+  paybackComment: string;
+}
+
+export interface CommitteeAudit {
+  unitEconomicsCheck: string;
+  demandAndPainCheck: string;
+  competitiveMoatCheck: string;
+  teamAndSkinInTheGame: string;
+  stressTestSummary: string;
+  exitAndTrancheLogic: string;
+  unverifiedRedFlags: string[];
+  founderHardQuestions: string[];
+}
+
+export interface LegalComplianceCut {
+  jurisdictionSummary: string;
+  activityClassificationStatus: 'provided' | 'missing_suggested';
+  suggestedBusinessScope: string;
+  suggestedActivityType: string;
+  suggestedOkedCode: string;
+  missingFieldsWarning: string;
+  taxCodeChecks: string;
+  entrepreneurialCodeChecks: string;
+  civilCodeChecks: string;
+  criminalCodeRisks: string;
+  industryLicensingRequirements: string;
+  legalStopFactors: string[];
+}
+
 export interface ProjectAnalysis {
   executiveSummary: string;
+  investmentCommitteeVerdict?: InvestmentCommitteeVerdict;
+  investmentCommitteeVerdictReason?: string;
   currencyCode: string;
   currencySymbol: string;
   baselineInputs: FinancialInputs;
@@ -93,6 +136,9 @@ export interface ProjectAnalysis {
   costStructure: CostBreakdownItem[];
   revenueDrivers: string[];
   unitEconomicsSummary: string;
+  independentValuation?: IndependentValuation;
+  committeeAudit?: CommitteeAudit;
+  legalCompliance?: LegalComplianceCut;
   risks: RiskItem[];
   assumptions: string[];
   preLaunchSteps: string[];
@@ -131,6 +177,9 @@ export interface ProjectRecord {
   region: RegionPreset;
   customRegion?: string;
   category?: string;
+  businessScope?: string;
+  activityType?: string;
+  okedCode?: string;
   comment?: string;
   currencyCode: string;
   currencySymbol: string;

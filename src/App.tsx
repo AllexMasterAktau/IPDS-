@@ -10,7 +10,11 @@ import { ActiveTab, Sidebar } from './components/Sidebar';
 import { TopBarControls } from './components/TopBarControls';
 import { WelcomeHero } from './components/WelcomeHero';
 import { getTranslations } from './i18n/translations';
-import { DEFAULT_FX_RATES, normalizeCurrencyCode } from './utils/financialModel';
+import {
+  DEFAULT_FX_RATES,
+  getRegionDefaults,
+  normalizeCurrencyCode,
+} from './utils/financialModel';
 import {
   analyzeProjectSmart,
   getRuntimeServerInfo,
@@ -640,6 +644,61 @@ export default function App() {
     [upsertLocalProject]
   );
 
+  const handleUpdateProjectMeta = useCallback(
+    (
+      project: ProjectRecord,
+      patch: Partial<
+        Pick<
+          ProjectRecord,
+          'businessScope' | 'activityType' | 'okedCode' | 'region' | 'customRegion'
+        >
+      >
+    ) => {
+      const nextRegion = patch.region ?? project.region;
+      const nextCustomRegion =
+        nextRegion === 'Свой вариант'
+          ? patch.customRegion ?? project.customRegion
+          : undefined;
+      const regionChanged = nextRegion !== project.region;
+      const regionDefaults = regionChanged
+        ? getRegionDefaults(nextRegion, nextCustomRegion, language)
+        : null;
+
+      const nextScope =
+        patch.businessScope !== undefined ? patch.businessScope : project.businessScope;
+      const nextActivity =
+        patch.activityType !== undefined ? patch.activityType : project.activityType;
+      const nextOked =
+        patch.okedCode !== undefined ? patch.okedCode : project.okedCode;
+
+      const hasMissing =
+        !nextScope?.trim() || !nextActivity?.trim() || !nextOked?.trim();
+
+      const updated: ProjectRecord = {
+        ...project,
+        region: nextRegion,
+        customRegion: nextCustomRegion,
+        businessScope: nextScope?.trim() || undefined,
+        activityType: nextActivity?.trim() || undefined,
+        okedCode: nextOked?.trim() || undefined,
+        currencyCode: regionDefaults ? regionDefaults.currencyCode : project.currencyCode,
+        currencySymbol: regionDefaults ? regionDefaults.currencySymbol : project.currencySymbol,
+        analysis: project.analysis?.legalCompliance
+          ? {
+              ...project.analysis,
+              legalCompliance: {
+                ...project.analysis.legalCompliance,
+                activityClassificationStatus: hasMissing ? 'missing_suggested' : 'provided',
+              },
+            }
+          : project.analysis,
+        updatedAt: new Date().toISOString(),
+      };
+      upsertLocalProject(updated);
+    },
+    [upsertLocalProject, language]
+  );
+
   const handleDeleteProject = (projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) {
@@ -721,6 +780,9 @@ export default function App() {
               fxRates={fxState.rates}
               onUpdateOverrides={(overrides) =>
                 handleUpdateOverrides(reportProject, overrides)
+              }
+              onUpdateProjectMeta={(patch) =>
+                handleUpdateProjectMeta(reportProject, patch)
               }
               onRunAnalysis={() => void handleRunAnalysis(reportProject)}
               analyzing={analyzingProjectId === reportProject.id}
@@ -968,6 +1030,9 @@ export default function App() {
               fxRates={fxState.rates}
               onUpdateOverrides={(overrides) =>
                 handleUpdateOverrides(activeProject, overrides)
+              }
+              onUpdateProjectMeta={(patch) =>
+                handleUpdateProjectMeta(activeProject, patch)
               }
               onRunAnalysis={() => void handleRunAnalysis(activeProject)}
               analyzing={analyzingProjectId === activeProject.id}

@@ -13,6 +13,10 @@ import { getTranslations } from '../i18n/translations';
 import {
   formatCompactMoney,
   formatMoney,
+  getEffectiveCommitteeAudit,
+  getEffectiveCommitteeVerdict,
+  getEffectiveIndependentValuation,
+  getEffectiveLegalCompliance,
   getEffectiveRecommendations,
   getRegionDisplayLabel,
 } from './financialModel';
@@ -387,6 +391,62 @@ export async function buildBinaryReportPdfBytes(
   }
 
   y += headerH + 5;
+
+  // ---------------------------------------------------------------------------
+  // 1B. ВЕРДИКТ ЖЁСТКОГО ИНВЕСТ-КОМИТЕТА И КЛАССИФИКАЦИЯ ДЕЯТЕЛЬНОСТИ
+  // ---------------------------------------------------------------------------
+  const committeeVerdict = getEffectiveCommitteeVerdict(analysis, metrics, language);
+  const independentValuation = getEffectiveIndependentValuation(
+    analysis,
+    metrics,
+    displaySymbol,
+    language
+  );
+  const committeeAudit = getEffectiveCommitteeAudit(analysis, metrics, language);
+  const legalCompliance = getEffectiveLegalCompliance(project, analysis, language);
+
+  const verdictLabel = t.report.verdictLabels[committeeVerdict.verdict];
+  const verdictReasonLines = wrapLines(
+    String(committeeVerdict.reason || '—'),
+    contentW - 8,
+    8.1
+  );
+  const verdictBoxH = 11 + verdictReasonLines.length * 3.7 + 2;
+  ensureSpace(verdictBoxH + 4);
+
+  const verdictBg: [number, number, number] =
+    committeeVerdict.verdict === 'GO'
+      ? [236, 253, 245]
+      : committeeVerdict.verdict === 'NO_GO'
+      ? [255, 241, 242]
+      : [255, 251, 235];
+  const verdictBorder: [number, number, number] =
+    committeeVerdict.verdict === 'GO'
+      ? [110, 231, 183]
+      : committeeVerdict.verdict === 'NO_GO'
+      ? [253, 164, 175]
+      : [252, 211, 77];
+  const verdictAccent: [number, number, number] =
+    committeeVerdict.verdict === 'GO'
+      ? [6, 95, 70]
+      : committeeVerdict.verdict === 'NO_GO'
+      ? [159, 18, 57]
+      : [146, 64, 14];
+
+  pdf.setFillColor(verdictBg[0], verdictBg[1], verdictBg[2]);
+  pdf.setDrawColor(verdictBorder[0], verdictBorder[1], verdictBorder[2]);
+  pdf.setLineWidth(0.35);
+  pdf.roundedRect(margin, y, contentW, verdictBoxH, 1.8, 1.8, 'FD');
+
+  setBold(8.2, verdictAccent);
+  pdf.text(`${t.report.verdictTitle}: ${verdictLabel}`, margin + 4, y + 5.2);
+  let vy = y + 9.4;
+  setRegular(8.1, [30, 32, 34]);
+  for (const line of verdictReasonLines) {
+    pdf.text(line, margin + 4, vy);
+    vy += 3.7;
+  }
+  y += verdictBoxH + 4.5;
 
   // ---------------------------------------------------------------------------
   // 2. 6 KPI КАРТОЧЕК (2 РЯДА ПО 3)
@@ -803,7 +863,7 @@ export async function buildBinaryReportPdfBytes(
     y += 6;
 
     for (const driver of analysis.revenueDrivers) {
-      const dLines = wrapLines(`• ${driver}`, contentW - 4, 8.2);
+      const dLines = wrapLines(`• ${String(driver || '')}`, contentW - 4, 8.2);
       ensureSpace(dLines.length * 3.8 + 2);
       setRegular(8.2, [58, 61, 66]);
       for (const line of dLines) {
@@ -816,9 +876,181 @@ export async function buildBinaryReportPdfBytes(
   }
 
   // ---------------------------------------------------------------------------
-  // 6. КОНТУР 2: РИСКИ И ОГРАНИЧЕНИЯ
+  // 5B. НЕЗАВИСИМАЯ ПЕРЕОЦЕНКА ТЕРМИНАЛА И АУДИТ ЖЁСТКОГО ИНВЕСТ-КОМИТЕТА
+  // ---------------------------------------------------------------------------
+  ensureSpace(20);
+  setBold(9.8, [30, 32, 34]);
+  pdf.text(t.report.valuationTitle, margin, y + 3.5);
+  y += 6.2;
+
+  const valRows = [
+    {
+      title: t.report.valProjectTitle,
+      claimed: `${t.report.claimedLabel}: ${String(independentValuation.claimedProjectValue || '—')}`,
+      realistic: `${t.report.realisticLabel}: ${String(independentValuation.realisticProjectValueRange || '—')}`,
+      note: String(independentValuation.valuationMethodology || ''),
+    },
+    {
+      title: t.report.valInvestmentTitle,
+      claimed: `${t.report.claimedLabel}: ${String(independentValuation.claimedInvestment || '—')}`,
+      realistic: `${t.report.realisticLabel}: ${String(independentValuation.realisticInvestmentAmount || '—')}`,
+      note: String(independentValuation.investmentGapExplanation || ''),
+    },
+    {
+      title: t.report.valPaybackTitle,
+      claimed: `${t.report.claimedLabel}: ${String(independentValuation.claimedPayback || '—')}`,
+      realistic: `${t.report.valBasePayback}: ${String(independentValuation.realisticPaybackBase || '—')} · ${t.report.valStressPayback}: ${String(independentValuation.realisticPaybackStress || '—')}`,
+      note: String(independentValuation.paybackComment || ''),
+    },
+  ];
+
+  for (const row of valRows) {
+    const claimedLines = wrapLines(row.claimed, contentW - 8, 7.7);
+    const realLines = wrapLines(row.realistic, contentW - 8, 8, true);
+    const noteLines = row.note ? wrapLines(row.note, contentW - 8, 7.4) : [];
+    const boxH =
+      6.5 +
+      claimedLines.length * 3.4 +
+      realLines.length * 3.6 +
+      noteLines.length * 3.3 +
+      3;
+    ensureSpace(boxH + 2);
+
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(216, 199, 165);
+    pdf.roundedRect(margin, y, contentW, boxH, 1.6, 1.6, 'FD');
+
+    let rvy = y + 4.5;
+    setBold(8.1, [154, 110, 46]);
+    pdf.text(String(row.title || '—'), margin + 4, rvy);
+    rvy += 4;
+
+    setRegular(7.7, [92, 96, 102]);
+    for (const line of claimedLines) {
+      pdf.text(line, margin + 4, rvy);
+      rvy += 3.4;
+    }
+    setBold(8, [30, 32, 34]);
+    for (const line of realLines) {
+      pdf.text(line, margin + 4, rvy);
+      rvy += 3.6;
+    }
+    if (noteLines.length > 0) {
+      setRegular(7.4, [92, 96, 102]);
+      for (const line of noteLines) {
+        pdf.text(line, margin + 4, rvy);
+        rvy += 3.3;
+      }
+    }
+    y += boxH + 2.5;
+  }
+
+  y += 2;
+  ensureSpace(16);
+  setBold(9.5, [30, 32, 34]);
+  pdf.text(t.report.auditTitle, margin, y + 3.5);
+  y += 6;
+
+  const auditItems = [
+    { label: t.report.auditUnitEconomics, val: committeeAudit.unitEconomicsCheck },
+    { label: t.report.auditDemand, val: committeeAudit.demandAndPainCheck },
+    { label: t.report.auditMoat, val: committeeAudit.competitiveMoatCheck },
+    { label: t.report.auditTeam, val: committeeAudit.teamAndSkinInTheGame },
+    { label: t.report.auditStressTest, val: committeeAudit.stressTestSummary },
+    { label: t.report.auditExitTranches, val: committeeAudit.exitAndTrancheLogic },
+  ];
+
+  for (const item of auditItems) {
+    const valLines = wrapLines(String(item.val || '—'), contentW - 8, 7.8);
+    const boxH = 7 + valLines.length * 3.5 + 2;
+    ensureSpace(boxH + 2);
+    pdf.setFillColor(250, 248, 243);
+    pdf.setDrawColor(229, 224, 213);
+    pdf.roundedRect(margin, y, contentW, boxH, 1.5, 1.5, 'FD');
+
+    setBold(7.8, [154, 110, 46]);
+    pdf.text(String(item.label || '—'), margin + 4, y + 4.6);
+    let ay = y + 8.3;
+    setRegular(7.8, [30, 32, 34]);
+    for (const line of valLines) {
+      pdf.text(line, margin + 4, ay);
+      ay += 3.5;
+    }
+    y += boxH + 2;
+  }
+
+  y += 3;
+
+  // ---------------------------------------------------------------------------
+  // 6. КОНТУР 2: РИСКИ И ОГРАНИЧЕНИЯ + ПРАВОВОЙ СРЕЗ ПО РЕГИОНУ
   // ---------------------------------------------------------------------------
   drawSectionHeading(t.report.contour2Title);
+
+  // Правовой срез по региону и ОКЭД
+  const okedStr = String(project.okedCode || legalCompliance.suggestedOkedCode || '—');
+  const scopeStr = String(project.businessScope || legalCompliance.suggestedBusinessScope || '—');
+  const activityStr = String(project.activityType || legalCompliance.suggestedActivityType || '—');
+
+  ensureSpace(22);
+  setBold(9.2, [30, 32, 34]);
+  pdf.text(`${t.report.legalTitle}: ${regionLabel} (ОКЭД: ${okedStr})`, margin, y + 3.5);
+  y += 6;
+
+  const legalSummaryText = `${String(legalCompliance.jurisdictionSummary || '')} | ${t.dialogue.labelBusinessScope}: ${scopeStr} | ${t.dialogue.labelActivityType}: ${activityStr}`;
+  const legalSummaryLines = wrapLines(legalSummaryText, contentW - 8, 7.8);
+  const missingWarnLines =
+    legalCompliance.activityClassificationStatus === 'missing_suggested' &&
+    legalCompliance.missingFieldsWarning
+      ? wrapLines(`${t.report.legalMissingAlert} ${legalCompliance.missingFieldsWarning}`, contentW - 8, 7.6)
+      : [];
+  const legalHeadH =
+    5 + legalSummaryLines.length * 3.5 + missingWarnLines.length * 3.4 + 3;
+  ensureSpace(legalHeadH + 3);
+  pdf.setFillColor(250, 248, 243);
+  pdf.setDrawColor(216, 199, 165);
+  pdf.roundedRect(margin, y, contentW, legalHeadH, 1.6, 1.6, 'FD');
+
+  let ly = y + 4.5;
+  setRegular(7.8, [30, 32, 34]);
+  for (const line of legalSummaryLines) {
+    pdf.text(line, margin + 4, ly);
+    ly += 3.5;
+  }
+  if (missingWarnLines.length > 0) {
+    ly += 1;
+    setBold(7.6, [146, 64, 14]);
+    for (const line of missingWarnLines) {
+      pdf.text(line, margin + 4, ly);
+      ly += 3.4;
+    }
+  }
+  y += legalHeadH + 2.5;
+
+  const legalCodeBlocks = [
+    { label: t.report.legalTaxCode, val: legalCompliance.taxCodeChecks },
+    { label: t.report.legalEntrepreneurialCode, val: legalCompliance.entrepreneurialCodeChecks },
+    { label: t.report.legalCivilCode, val: legalCompliance.civilCodeChecks },
+    { label: t.report.legalCriminalCode, val: legalCompliance.criminalCodeRisks },
+    { label: t.report.legalLicensing, val: legalCompliance.industryLicensingRequirements },
+  ];
+  for (const block of legalCodeBlocks) {
+    const bLines = wrapLines(String(block.val || '—'), contentW - 8, 7.7);
+    const boxH = 6.8 + bLines.length * 3.4 + 2;
+    ensureSpace(boxH + 2);
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(229, 224, 213);
+    pdf.roundedRect(margin, y, contentW, boxH, 1.4, 1.4, 'FD');
+    setBold(7.7, [30, 32, 34]);
+    pdf.text(String(block.label || '—'), margin + 4, y + 4.4);
+    let bly = y + 8;
+    setRegular(7.7, [58, 61, 66]);
+    for (const line of bLines) {
+      pdf.text(line, margin + 4, bly);
+      bly += 3.4;
+    }
+    y += boxH + 1.8;
+  }
+  y += 2;
 
   for (const risk of analysis.risks) {
     const sev = getSeverityColors(risk.severity);
@@ -895,6 +1127,9 @@ export async function buildBinaryReportPdfBytes(
     y += 3;
   };
 
+  renderBulletSection(t.report.legalStopFactors, legalCompliance.legalStopFactors, false);
+  renderBulletSection(t.report.redFlagsTitle, committeeAudit.unverifiedRedFlags, false);
+  renderBulletSection(t.report.hardQuestionsTitle, committeeAudit.founderHardQuestions, true);
   renderBulletSection(t.report.pdfAssumptionsShort, analysis.assumptions, false);
   renderBulletSection(t.report.pdfStepsShort, analysis.preLaunchSteps, true);
 

@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronUp,
@@ -7,8 +8,11 @@ import {
   FileText,
   Lock,
   Paperclip,
+  Pencil,
   Play,
+  Scale,
   Send,
+  ShieldAlert,
   Sparkles,
   Trash2,
 } from 'lucide-react';
@@ -19,6 +23,7 @@ import type {
   Language,
   LocalDocumentDigest,
   ProjectRecord,
+  RegionPreset,
 } from '../types/ipds';
 import { getTranslations } from '../i18n/translations';
 import {
@@ -27,9 +32,14 @@ import {
   formatCompactMoney,
   formatMoney,
   getCurrencySymbol,
+  getEffectiveCommitteeAudit,
+  getEffectiveCommitteeVerdict,
+  getEffectiveIndependentValuation,
   getEffectiveInputs,
+  getEffectiveLegalCompliance,
   getEffectiveRecommendations,
   getFxConversionFactor,
+  getRegionDefaults,
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
@@ -83,7 +93,30 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
     'numbers' | 'risks' | 'recommendations'
   >('recommendations');
   const [contoursExpanded, setContoursExpanded] = useState(true);
+  const [editingActivity, setEditingActivity] = useState(false);
+  const [draftRegion, setDraftRegion] = useState<RegionPreset>(project.region);
+  const [draftCustomRegion, setDraftCustomRegion] = useState(project.customRegion || '');
+  const [draftScope, setDraftScope] = useState(project.businessScope || '');
+  const [draftActivity, setDraftActivity] = useState(project.activityType || '');
+  const [draftOked, setDraftOked] = useState(project.okedCode || '');
+  const [activitySavedHint, setActivitySavedHint] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setDraftRegion(project.region);
+    setDraftCustomRegion(project.customRegion || '');
+    setDraftScope(project.businessScope || '');
+    setDraftActivity(project.activityType || '');
+    setDraftOked(project.okedCode || '');
+    setActivitySavedHint(false);
+  }, [
+    project.id,
+    project.region,
+    project.customRegion,
+    project.businessScope,
+    project.activityType,
+    project.okedCode,
+  ]);
 
   const regionLabel = getRegionDisplayLabel(project.region, project.customRegion, language);
   const baseCurrency = normalizeCurrencyCode(project.analysis?.currencyCode || project.currencyCode);
@@ -105,7 +138,54 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
     return getEffectiveRecommendations(project.analysis, derivedMetrics, language);
   }, [project.analysis, derivedMetrics, language]);
 
+  const effectiveVerdict = useMemo(() => {
+    if (!project.analysis || !derivedMetrics) return null;
+    return getEffectiveCommitteeVerdict(project.analysis, derivedMetrics, language);
+  }, [project.analysis, derivedMetrics, language]);
+
+  const effectiveValuation = useMemo(() => {
+    if (!project.analysis || !derivedMetrics) return null;
+    return getEffectiveIndependentValuation(
+      project.analysis,
+      derivedMetrics,
+      displaySymbol,
+      language
+    );
+  }, [project.analysis, derivedMetrics, displaySymbol, language]);
+
+  const effectiveAudit = useMemo(() => {
+    if (!project.analysis || !derivedMetrics) return null;
+    return getEffectiveCommitteeAudit(project.analysis, derivedMetrics, language);
+  }, [project.analysis, derivedMetrics, language]);
+
+  const effectiveLegal = useMemo(() => {
+    if (!project.analysis) return null;
+    return getEffectiveLegalCompliance(project, project.analysis, language);
+  }, [project, language]);
+
   const reportTabUrl = `/?view=report&projectId=${encodeURIComponent(project.id)}`;
+
+  const handleSaveActivityParams = (e: React.FormEvent) => {
+    e.preventDefault();
+    const regionChanged = draftRegion !== project.region;
+    const regionDefaults = regionChanged
+      ? getRegionDefaults(draftRegion, draftCustomRegion, language)
+      : null;
+    const updated: ProjectRecord = {
+      ...project,
+      region: draftRegion,
+      customRegion: draftRegion === 'Свой вариант' ? draftCustomRegion.trim() : undefined,
+      businessScope: draftScope.trim() || undefined,
+      activityType: draftActivity.trim() || undefined,
+      okedCode: draftOked.trim() || undefined,
+      currencyCode: regionDefaults ? regionDefaults.currencyCode : project.currencyCode,
+      currencySymbol: regionDefaults ? regionDefaults.currencySymbol : project.currencySymbol,
+      updatedAt: new Date().toISOString(),
+    };
+    onProjectUpdated(updated);
+    setEditingActivity(false);
+    setActivitySavedHint(true);
+  };
 
   const handleAttachFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -208,65 +288,188 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
   return (
     <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-4">
       {/* Шапка проекта и главные действия анализа */}
-      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="space-y-0.5 leading-snug">
-          <div className="text-xs text-[#5C6066]">
-            {regionLabel} · {displayCurrency}
-            {baseCurrency !== displayCurrency ? ` (${baseCurrency})` : ''} · {project.fullName} (
-            {project.email})
-          </div>
-          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug">{project.projectName}</h2>
-          {project.comment && (
-            <p className="text-xs text-[#5C6066] max-w-3xl leading-snug">{project.comment}</p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            type="button"
-            disabled={analyzing}
-            onClick={onRunAnalysis}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
-          >
-            {analyzing ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-                <span>{language === 'en' ? 'Analysis in progress...' : 'Выполняется анализ...'}</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
-                <span>
-                  {project.analysis
-                    ? t.dialogue.reanalyze
-                    : t.dialogue.analyze}
+      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] p-4 sm:p-5 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="space-y-1 leading-snug">
+            <div className="text-xs text-[#5C6066]">
+              {regionLabel} · {displayCurrency}
+              {baseCurrency !== displayCurrency ? ` (${baseCurrency})` : ''} · {project.fullName} (
+              {project.email})
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug">{project.projectName}</h2>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#3A3D42]">
+              <span>
+                <span className="text-[#5C6066]">{t.dialogue.labelBusinessScope}:</span>{' '}
+                <span className="font-medium">{project.businessScope || '—'}</span>
+              </span>
+              <span>
+                <span className="text-[#5C6066]">{t.dialogue.labelActivityType}:</span>{' '}
+                <span className="font-medium">{project.activityType || '—'}</span>
+              </span>
+              <span>
+                <span className="text-[#5C6066]">{t.dialogue.labelOkedCode}:</span>{' '}
+                <span className="font-mono-tabular font-semibold text-[#9A6E2E]">
+                  {project.okedCode || '—'}
                 </span>
-              </>
-            )}
-          </button>
-
-          {project.analysis && (
-            <>
+              </span>
               <button
                 type="button"
-                onClick={onOpenReportTab}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+                onClick={() => setEditingActivity((v) => !v)}
+                className="inline-flex items-center gap-1 text-[#9A6E2E] hover:text-[#7B551F] font-semibold cursor-pointer"
               >
-                <span>{t.dialogue.modelBtn}</span>
+                <Pencil className="w-3 h-3" />
+                <span>{t.dialogue.editActivityBtn}</span>
               </button>
+            </div>
+            {(!project.businessScope || !project.activityType || !project.okedCode) && (
+              <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1 inline-block">
+                {t.dialogue.activityMissingHint}
+              </div>
+            )}
+            {activitySavedHint && (
+              <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-2.5 py-1 inline-block">
+                {t.dialogue.activitySavedHint}
+              </div>
+            )}
+            {project.comment && (
+              <p className="text-xs text-[#5C6066] max-w-3xl leading-snug">{project.comment}</p>
+            )}
+          </div>
 
-              <a
-                href={reportTabUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
-              >
-                <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
-                <span>{t.common.getReport}</span>
-              </a>
-            </>
-          )}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={analyzing}
+              onClick={onRunAnalysis}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+            >
+              {analyzing ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>{language === 'en' ? 'Analysis in progress...' : 'Выполняется анализ...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
+                  <span>
+                    {project.analysis
+                      ? t.dialogue.reanalyze
+                      : t.dialogue.analyze}
+                  </span>
+                </>
+              )}
+            </button>
+
+            {project.analysis && (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenReportTab}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+                >
+                  <span>{t.dialogue.modelBtn}</span>
+                </button>
+
+                <a
+                  href={reportTabUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
+                  <span>{t.common.getReport}</span>
+                </a>
+              </>
+            )}
+          </div>
         </div>
+
+        {editingActivity && (
+          <form
+            onSubmit={handleSaveActivityParams}
+            className="pt-3 border-t border-[#E5E0D5] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end"
+          >
+            <div>
+              <label className="block text-[11px] text-[#5C6066] mb-1">
+                {t.createModal.labelRegion}
+              </label>
+              <select
+                value={draftRegion}
+                onChange={(e) => setDraftRegion(e.target.value as RegionPreset)}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
+              >
+                {(['Казахстан', 'РФ', 'Международный', 'Свой вариант'] as RegionPreset[]).map(
+                  (r) => (
+                    <option key={r} value={r}>
+                      {t.createModal.regions[r]}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+
+            {draftRegion === 'Свой вариант' && (
+              <div>
+                <label className="block text-[11px] text-[#5C6066] mb-1">
+                  {t.createModal.placeholderCustomRegion}
+                </label>
+                <input
+                  type="text"
+                  value={draftCustomRegion}
+                  onChange={(e) => setDraftCustomRegion(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[11px] text-[#5C6066] mb-1">
+                {t.dialogue.labelBusinessScope}
+              </label>
+              <input
+                type="text"
+                value={draftScope}
+                onChange={(e) => setDraftScope(e.target.value)}
+                placeholder={t.createModal.placeholderBusinessScope}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-[#5C6066] mb-1">
+                {t.dialogue.labelActivityType}
+              </label>
+              <input
+                type="text"
+                value={draftActivity}
+                onChange={(e) => setDraftActivity(e.target.value)}
+                placeholder={t.createModal.placeholderActivityType}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
+              />
+            </div>
+
+            <div className="flex items-end gap-2">
+              <div className="flex-1 min-w-0">
+                <label className="block text-[11px] text-[#5C6066] mb-1">
+                  {t.dialogue.labelOkedCode}
+                </label>
+                <input
+                  type="text"
+                  value={draftOked}
+                  onChange={(e) => setDraftOked(e.target.value)}
+                  placeholder="64.92"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs font-mono-tabular text-[#1E2022]"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] text-[#F5F3EE] text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                {t.dialogue.saveActivityBtn}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Компактный блок материалов на ПК пользователя */}
@@ -304,166 +507,279 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       </div>
 
       {/* Три контура анализа рядом с диалогом (Цифры, Риски, Рекомендации) */}
-      {project.analysis && derivedMetrics && effectiveRecommendations && (
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-[#1E2022] mr-1">
-                {t.dialogue.contoursSummaryTitle}:
-              </span>
-              {(
-                [
-                  { id: 'numbers', label: t.dialogue.contourTabNumbers },
-                  { id: 'risks', label: t.dialogue.contourTabRisks },
-                  { id: 'recommendations', label: t.dialogue.contourTabRecommendations },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveContourTab(tab.id);
-                    setContoursExpanded(true);
-                  }}
-                  className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer border whitespace-nowrap ${
-                    activeContourTab === tab.id && contoursExpanded
-                      ? 'bg-[#1A1C1F] border-white/[0.26] text-[#F5F3EE] font-semibold'
-                      : 'bg-[#FFFFFF] border-[#C9C1B2] text-[#3A3D42] hover:border-[#8C6D3F] hover:text-[#1E2022]'
+      {project.analysis &&
+        derivedMetrics &&
+        effectiveRecommendations &&
+        effectiveVerdict &&
+        effectiveValuation &&
+        effectiveAudit &&
+        effectiveLegal && (
+          <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-[#1E2022] mr-1">
+                  {t.dialogue.contoursSummaryTitle}:
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                    effectiveVerdict.verdict === 'GO'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : effectiveVerdict.verdict === 'NO_GO'
+                      ? 'bg-rose-50 border-rose-300 text-rose-800'
+                      : 'bg-amber-50 border-amber-300 text-amber-800'
                   }`}
                 >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setContoursExpanded((v) => !v)}
-              className="inline-flex items-center gap-1 text-xs text-[#5C6066] hover:text-[#1E2022] cursor-pointer"
-            >
-              <span>
-                {contoursExpanded ? t.dialogue.hideContours : t.dialogue.showContours}
-              </span>
-              {contoursExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
-
-          {contoursExpanded && activeContourTab === 'numbers' && (
-            <div className="space-y-2.5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
-                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiInvestments}</div>
-                  <div className="text-xs font-mono-tabular font-bold text-[#9A6E2E] mt-0.5">
-                    {formatCompactMoney(derivedMetrics.investmentAmount, displaySymbol, language)}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
-                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiRevenue}</div>
-                  <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
-                    {formatCompactMoney(derivedMetrics.monthlyRevenue, displaySymbol, language)}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
-                  <div className="text-[11px] text-[#5C6066]">{t.report.pdfEbitdaMargin}</div>
-                  <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
-                    {derivedMetrics.ebitdaMarginPct}%
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
-                  <div className="text-[11px] text-[#5C6066]">{t.projects.kpiPayback}</div>
-                  <div className="text-xs font-mono-tabular font-bold text-emerald-700 mt-0.5">
-                    {derivedMetrics.paybackMonths
-                      ? `${derivedMetrics.paybackMonths} ${t.common.monthsShort}`
-                      : t.common.moreThan60Months}
-                  </div>
-                </div>
+                  {t.dialogue.contourTabVerdictPrefix}:{' '}
+                  {effectiveVerdict.verdict === 'NO_GO'
+                    ? 'NO-GO'
+                    : effectiveVerdict.verdict === 'CONDITIONAL_GO'
+                    ? 'CONDITIONAL GO'
+                    : 'GO'}
+                </span>
+                {(
+                  [
+                    { id: 'numbers', label: t.dialogue.contourTabNumbers },
+                    { id: 'risks', label: t.dialogue.contourTabRisks },
+                    { id: 'recommendations', label: t.dialogue.contourTabRecommendations },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveContourTab(tab.id);
+                      setContoursExpanded(true);
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer border whitespace-nowrap ${
+                      activeContourTab === tab.id && contoursExpanded
+                        ? 'bg-[#1A1C1F] border-white/[0.26] text-[#F5F3EE] font-semibold'
+                        : 'bg-[#FFFFFF] border-[#C9C1B2] text-[#3A3D42] hover:border-[#8C6D3F] hover:text-[#1E2022]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-              <p className="text-xs text-[#3A3D42] leading-snug bg-[#FFFFFF] border border-[#E5E0D5] rounded-lg px-3 py-2">
-                {project.analysis.executiveSummary}
-              </p>
-            </div>
-          )}
 
-          {contoursExpanded && activeContourTab === 'risks' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {project.analysis.risks.map((risk) => (
-                <div
-                  key={risk.id}
-                  className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-2.5 space-y-1 text-xs leading-snug"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-medium text-[#5C6066]">
-                      {risk.dimensionLabel}
-                    </span>
-                    <span
-                      className={`text-[11px] font-semibold ${
-                        risk.severity === 'high'
-                          ? 'text-rose-700'
-                          : risk.severity === 'medium'
-                          ? 'text-amber-700'
-                          : 'text-emerald-700'
-                      }`}
-                    >
-                      {t.report.severity[risk.severity]}
-                    </span>
+              <button
+                type="button"
+                onClick={() => setContoursExpanded((v) => !v)}
+                className="inline-flex items-center gap-1 text-xs text-[#5C6066] hover:text-[#1E2022] cursor-pointer"
+              >
+                <span>
+                  {contoursExpanded ? t.dialogue.hideContours : t.dialogue.showContours}
+                </span>
+                {contoursExpanded ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+
+            {contoursExpanded && activeContourTab === 'numbers' && (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                    <div className="text-[11px] text-[#5C6066]">{t.projects.kpiInvestments}</div>
+                    <div className="text-xs font-mono-tabular font-bold text-[#9A6E2E] mt-0.5">
+                      {formatCompactMoney(derivedMetrics.investmentAmount, displaySymbol, language)}
+                    </div>
                   </div>
-                  <div className="font-semibold text-[#1E2022]">{risk.title}</div>
-                  <div className="text-[#5C6066]">{risk.description}</div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                    <div className="text-[11px] text-[#5C6066]">{t.projects.kpiRevenue}</div>
+                    <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
+                      {formatCompactMoney(derivedMetrics.monthlyRevenue, displaySymbol, language)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                    <div className="text-[11px] text-[#5C6066]">{t.report.pdfEbitdaMargin}</div>
+                    <div className="text-xs font-mono-tabular font-bold text-[#1E2022] mt-0.5">
+                      {derivedMetrics.ebitdaMarginPct}%
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] px-3 py-2">
+                    <div className="text-[11px] text-[#5C6066]">{t.projects.kpiPayback}</div>
+                    <div className="text-xs font-mono-tabular font-bold text-emerald-700 mt-0.5">
+                      {derivedMetrics.paybackMonths
+                        ? `${derivedMetrics.paybackMonths} ${t.common.monthsShort}`
+                        : t.common.moreThan60Months}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {contoursExpanded && activeContourTab === 'recommendations' && (
-            <div className="space-y-2.5">
-              <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] p-3 space-y-1">
-                <div className="text-[11px] font-semibold text-[#9A6E2E]">
-                  {t.report.recConclusionTitle}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] px-3 py-2 space-y-0.5 text-xs leading-snug">
+                    <div className="text-[11px] font-semibold text-[#9A6E2E]">
+                      {t.report.valProjectTitle}
+                    </div>
+                    <div className="font-semibold text-[#1E2022]">
+                      {effectiveValuation.realisticProjectValueRange}
+                    </div>
+                    <div className="text-[11px] text-[#5C6066]">
+                      {t.report.claimedLabel}: {effectiveValuation.claimedProjectValue}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] px-3 py-2 space-y-0.5 text-xs leading-snug">
+                    <div className="text-[11px] font-semibold text-[#9A6E2E]">
+                      {t.report.valInvestmentTitle}
+                    </div>
+                    <div className="font-semibold text-[#1E2022]">
+                      {effectiveValuation.realisticInvestmentAmount}
+                    </div>
+                    <div className="text-[11px] text-[#5C6066]">
+                      {t.report.claimedLabel}: {effectiveValuation.claimedInvestment}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] px-3 py-2 space-y-0.5 text-xs leading-snug">
+                    <div className="text-[11px] font-semibold text-[#9A6E2E]">
+                      {t.report.valPaybackTitle}
+                    </div>
+                    <div className="font-semibold text-[#1E2022]">
+                      {effectiveValuation.realisticPaybackBase} · {t.report.valStressPayback}:{' '}
+                      {effectiveValuation.realisticPaybackStress}
+                    </div>
+                    <div className="text-[11px] text-[#5C6066]">
+                      {t.report.claimedLabel}: {effectiveValuation.claimedPayback}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-[#1E2022] leading-snug">
-                  {effectiveRecommendations.analystConclusion}
+
+                <p className="text-xs text-[#3A3D42] leading-snug bg-[#FFFFFF] border border-[#E5E0D5] rounded-lg px-3 py-2">
+                  {project.analysis.executiveSummary}
                 </p>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
-                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
-                    {t.report.recMitigationTitle}
+            )}
+
+            {contoursExpanded && activeContourTab === 'risks' && (
+              <div className="space-y-2.5">
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] p-3 space-y-1.5 text-xs leading-snug">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#1E2022]">
+                      <Scale className="w-3.5 h-3.5 text-[#9A6E2E]" />
+                      <span>
+                        {t.dialogue.legalSummaryLabel} ({regionLabel})
+                      </span>
+                    </span>
+                    {effectiveLegal.suggestedOkedCode && (
+                      <span className="font-mono-tabular text-[11px] text-[#9A6E2E] font-semibold">
+                        ОКЭД: {effectiveLegal.suggestedOkedCode}
+                      </span>
+                    )}
                   </div>
-                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
-                    {effectiveRecommendations.riskMitigationMeasures.map((m, i) => (
-                      <li key={i}>{m}</li>
-                    ))}
-                  </ul>
+                  <p className="text-[#3A3D42]">{effectiveLegal.jurisdictionSummary}</p>
+                  {effectiveLegal.legalStopFactors.length > 0 && (
+                    <ul className="list-disc pl-4 text-rose-800 space-y-0.5">
+                      {effectiveLegal.legalStopFactors.map((sf, idx) => (
+                        <li key={idx}>{sf}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
-                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
-                    {t.report.recCrisisTitle}
+
+                {effectiveAudit.unverifiedRedFlags.length > 0 && (
+                  <div className="rounded-lg bg-rose-50/70 border border-rose-200 p-3 space-y-1 text-xs leading-snug">
+                    <div className="inline-flex items-center gap-1.5 font-semibold text-rose-800">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.dialogue.redFlagsLabel}</span>
+                    </div>
+                    <ul className="list-disc pl-4 text-rose-900 space-y-0.5">
+                      {effectiveAudit.unverifiedRedFlags.map((flag, idx) => (
+                        <li key={idx}>{flag}</li>
+                      ))}
+                    </ul>
                   </div>
-                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
-                    {effectiveRecommendations.crisisAndBottleneckPlan.map((c, i) => (
-                      <li key={i}>{c}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
-                  <div className="text-xs font-semibold text-[#1E2022] leading-snug">
-                    {t.report.recGrowthTitle}
-                  </div>
-                  <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
-                    {effectiveRecommendations.growthPlanAndMetrics.map((g, i) => (
-                      <li key={i}>{g}</li>
-                    ))}
-                  </ul>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {project.analysis.risks.map((risk) => (
+                    <div
+                      key={risk.id}
+                      className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-2.5 space-y-1 text-xs leading-snug"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-[#5C6066]">
+                          {risk.dimensionLabel}
+                        </span>
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            risk.severity === 'high'
+                              ? 'text-rose-700'
+                              : risk.severity === 'medium'
+                              ? 'text-amber-700'
+                              : 'text-emerald-700'
+                          }`}
+                        >
+                          {t.report.severity[risk.severity]}
+                        </span>
+                      </div>
+                      <div className="font-semibold text-[#1E2022]">{risk.title}</div>
+                      <div className="text-[#5C6066]">{risk.description}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+
+            {contoursExpanded && activeContourTab === 'recommendations' && (
+              <div className="space-y-2.5">
+                <div className="rounded-lg bg-[#FFFFFF] border border-[#D8C7A5] p-3 space-y-1">
+                  <div className="text-[11px] font-semibold text-[#9A6E2E]">
+                    {t.report.recConclusionTitle}
+                  </div>
+                  <p className="text-xs text-[#1E2022] leading-snug">
+                    {effectiveRecommendations.analystConclusion}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                    <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                      {t.report.recMitigationTitle}
+                    </div>
+                    <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+                      {effectiveRecommendations.riskMitigationMeasures.map((m, i) => (
+                        <li key={i}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                    <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                      {t.report.recCrisisTitle}
+                    </div>
+                    <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
+                      {effectiveRecommendations.crisisAndBottleneckPlan.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                    <div className="text-xs font-semibold text-[#1E2022] leading-snug">
+                      {t.report.recGrowthTitle}
+                    </div>
+                    <ul className="space-y-1 text-xs text-[#3A3D42] leading-snug list-disc pl-4">
+                      {effectiveRecommendations.growthPlanAndMetrics.map((g, i) => (
+                        <li key={i}>{g}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                {effectiveAudit.founderHardQuestions.length > 0 && (
+                  <div className="rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] p-3 space-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1E2022]">
+                      <AlertTriangle className="w-3.5 h-3.5 text-[#9A6E2E]" />
+                      <span>{t.dialogue.hardQuestionsLabel}</span>
+                    </div>
+                    <ol className="space-y-1 text-xs text-[#3A3D42] leading-snug list-decimal pl-4">
+                      {effectiveAudit.founderHardQuestions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* История диалога с ИИ */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col">
