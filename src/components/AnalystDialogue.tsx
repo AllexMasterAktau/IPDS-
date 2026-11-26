@@ -10,6 +10,7 @@ import {
   Paperclip,
   Pencil,
   Play,
+  Plus,
   Scale,
   Send,
   ShieldAlert,
@@ -49,6 +50,7 @@ import {
   parseLocalFileToDigest,
   validateLocalFilesBatch,
 } from '../utils/localFileParser';
+import { mergeDocumentsUnique } from '../utils/projectDedup';
 import { chatWithAnalystSmart, MissingGeminiKeyError } from '../utils/clientGemini';
 
 interface AnalystDialogueProps {
@@ -100,7 +102,11 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
   const [draftActivity, setDraftActivity] = useState(project.activityType || '');
   const [draftOked, setDraftOked] = useState(project.okedCode || '');
   const [activitySavedHint, setActivitySavedHint] = useState(false);
+  const [parsingProjectDocs, setParsingProjectDocs] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [docsDirtyAfterAnalysis, setDocsDirtyAfterAnalysis] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const docsFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraftRegion(project.region);
@@ -117,6 +123,11 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
     project.activityType,
     project.okedCode,
   ]);
+
+  useEffect(() => {
+    setDocsDirtyAfterAnalysis(false);
+    setDocsError(null);
+  }, [project.id, project.analysis?.generatedAt]);
 
   const regionLabel = getRegionDisplayLabel(project.region, project.customRegion, language);
   const baseCurrency = normalizeCurrencyCode(project.analysis?.currencyCode || project.currencyCode);
@@ -215,6 +226,55 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
     }
   };
 
+  const handleAddProjectFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setParsingProjectDocs(true);
+    setDocsError(null);
+    try {
+      const { accepted, oversized } = validateLocalFilesBatch(Array.from(files));
+
+      if (oversized.length > 0) {
+        const list = oversized
+          .map((f) => `«${f.name}» (${formatFileSize(f.size, language)})`)
+          .join(', ');
+        setDocsError(t.createModal.errFileTooLarge.replace('{files}', list));
+      }
+
+      if (accepted.length > 0) {
+        const parsed = await Promise.all(
+          accepted.map((f) => parseLocalFileToDigest(f))
+        );
+        const nextDocs = mergeDocumentsUnique(project.documents, parsed);
+        onProjectUpdated({
+          ...project,
+          documents: nextDocs,
+          updatedAt: new Date().toISOString(),
+        });
+        if (project.analysis) {
+          setDocsDirtyAfterAnalysis(true);
+        }
+      }
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : t.createModal.errReadFile);
+    } finally {
+      setParsingProjectDocs(false);
+      if (docsFileRef.current) docsFileRef.current.value = '';
+    }
+  };
+
+  const handleRemoveProjectDoc = (docId: string) => {
+    setDocsError(null);
+    const nextDocs = project.documents.filter((d) => d.id !== docId);
+    onProjectUpdated({
+      ...project,
+      documents: nextDocs,
+      updatedAt: new Date().toISOString(),
+    });
+    if (project.analysis) {
+      setDocsDirtyAfterAnalysis(true);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() && pendingDocs.length === 0) return;
@@ -267,12 +327,15 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
 
       const updatedProject: ProjectRecord = {
         ...project,
-        documents: [...project.documents, ...pendingDocs],
+        documents: mergeDocumentsUnique(project.documents, pendingDocs),
         dialogue: [...project.dialogue, userMsgRecord, assistantMsgRecord],
         updatedAt: now,
       };
 
       onProjectUpdated(updatedProject);
+      if (pendingDocs.length > 0 && project.analysis) {
+        setDocsDirtyAfterAnalysis(true);
+      }
       setMessage('');
       setPendingDocs([]);
     } catch (err) {
@@ -473,16 +536,64 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
       </div>
 
       {/* Компактный блок материалов на ПК пользователя */}
-      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-[#1E2022]">
-            {t.dialogue.userPcDocsTitle} ({project.documents.length})
+      <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-3.5 sm:p-4 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="text-xs font-semibold text-[#1E2022]">
+              {t.dialogue.userPcDocsTitle} ({project.documents.length})
+            </div>
+            <span className="inline-flex items-center gap-1 text-[11px] text-[#5C6066]">
+              <Lock className="w-3 h-3 text-[#B88B4A]" />
+              <span>{t.dialogue.userPcBadge}</span>
+            </span>
           </div>
-          <span className="inline-flex items-center gap-1 text-[11px] text-[#5C6066]">
-            <Lock className="w-3 h-3 text-[#B88B4A]" />
-            <span>{t.dialogue.userPcBadge}</span>
-          </span>
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={docsFileRef}
+              type="file"
+              multiple
+              accept={ACCEPTED_LOCAL_FILE_TYPES}
+              onChange={(e) => void handleAddProjectFiles(e.target.files)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              disabled={parsingProjectDocs}
+              onClick={() => docsFileRef.current?.click()}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
+              <span>
+                {parsingProjectDocs ? t.dialogue.addingFilesBtn : t.dialogue.addFilesBtn}
+              </span>
+            </button>
+          </div>
         </div>
+
+        {docsError && (
+          <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-800">
+            {docsError}
+          </div>
+        )}
+
+        {docsDirtyAfterAnalysis && project.analysis && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2 leading-snug">
+            <div className="inline-flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>{t.dialogue.docsUpdatedHint}</span>
+            </div>
+            <button
+              type="button"
+              disabled={analyzing}
+              onClick={onRunAnalysis}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1A1C1F] hover:bg-[#26292E] disabled:opacity-60 text-[#F5F3EE] text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Play className="w-3 h-3 shrink-0" />
+              <span>{analyzing ? t.dialogue.analyzing : t.dialogue.reanalyze}</span>
+            </button>
+          </div>
+        )}
 
         {project.documents.length === 0 ? (
           <div className="text-xs text-[#5C6066] leading-snug">{t.dialogue.docsEmpty}</div>
@@ -491,15 +602,24 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
             {project.documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] text-xs leading-tight"
+                className="relative flex items-start gap-2 px-2.5 py-2 pr-8 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] text-xs leading-tight"
               >
-                <FileText className="w-3.5 h-3.5 text-[#B88B4A] shrink-0" />
-                <div className="min-w-0">
+                <FileText className="w-3.5 h-3.5 text-[#B88B4A] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
                   <div className="text-[#1E2022] font-medium truncate">{doc.name}</div>
                   <div className="text-[11px] text-[#5C6066] truncate">
-                    {doc.previewNote} · {doc.charCount} симв.
+                    {doc.previewNote} · {doc.charCount} {t.dialogue.charsShort}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveProjectDoc(doc.id)}
+                  aria-label={t.dialogue.removeDocAria}
+                  title={t.dialogue.removeDocAria}
+                  className="absolute top-1.5 right-1.5 p-1 rounded text-[#7A7E85] hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             ))}
           </div>
