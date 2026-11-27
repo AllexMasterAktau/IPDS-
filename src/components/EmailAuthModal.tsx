@@ -129,6 +129,14 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
       setError(t.authModal.errEmail);
       return;
     }
+    if (!adminEmail) {
+      setError(
+        language === 'en'
+          ? 'Creator email (VITE_ADMIN_EMAIL) is not configured in environment.'
+          : 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.'
+      );
+      return;
+    }
     if (!isCreatorEmail(trimmedEmail)) {
       setError(
         language === 'en'
@@ -306,7 +314,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
                   required
                   value={creatorEmail}
                   onChange={(e) => setCreatorEmail(e.target.value)}
-                  placeholder={adminEmail}
+                  placeholder={adminEmail || t.createModal.placeholderEmail}
                   className="w-full px-3.5 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-sm text-[#1E2022] placeholder:text-[#8B8F96]"
                 />
               </div>

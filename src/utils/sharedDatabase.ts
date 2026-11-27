@@ -20,20 +20,29 @@ import type {
   RegionPreset,
 } from '../types/ipds';
 
-const DEFAULT_ADMIN_EMAIL = 'allmasters13@gmail.com';
 const LS_LOCAL_CREATOR_KEY_HASH = 'ipds_creator_key_hash_v1';
 
 export const FIRESTORE_COLLECTION_ANALYSES = 'ipds_shared_analyses';
 export const FIRESTORE_COLLECTION_SETTINGS = 'ipds_settings';
 
-const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyCTT4bdD9nEQbcaETpfURpi-opAMLvsLQI',
-  authDomain: 'ipds-terminal-reports.firebaseapp.com',
-  projectId: 'ipds-terminal-reports',
-  storageBucket: 'ipds-terminal-reports.firebasestorage.app',
-  messagingSenderId: '877494822475',
-  appId: '1:877494822475:web:3aab5734278d0dbb890fce',
-};
+export interface FirebaseEnvConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+}
+
+function readViteEnv(key: string): string {
+  try {
+    const env = (import.meta as ImportMeta & { env?: Record<string, unknown> })?.env;
+    const raw = env?.[key];
+    return typeof raw === 'string' ? raw.trim() : '';
+  } catch {
+    return '';
+  }
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -66,36 +75,23 @@ function logFirestoreError(
 }
 
 export function getAdminEmail(): string {
-  const raw =
-    (import.meta.env?.VITE_ADMIN_EMAIL as string | undefined) || DEFAULT_ADMIN_EMAIL;
-  return raw.trim().toLowerCase() || DEFAULT_ADMIN_EMAIL;
+  return readViteEnv('VITE_ADMIN_EMAIL').toLowerCase();
 }
 
 export function isCreatorEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return email.trim().toLowerCase() === getAdminEmail();
+  const adminEmail = getAdminEmail();
+  if (!adminEmail || !email) return false;
+  return email.trim().toLowerCase() === adminEmail;
 }
 
-export function getFirebaseConfig() {
+export function getFirebaseConfig(): FirebaseEnvConfig {
   return {
-    apiKey:
-      ((import.meta.env?.VITE_FIREBASE_API_KEY as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.apiKey,
-    authDomain:
-      ((import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.authDomain,
-    projectId:
-      ((import.meta.env?.VITE_FIREBASE_PROJECT_ID as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.projectId,
-    storageBucket:
-      ((import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.storageBucket,
-    messagingSenderId:
-      ((import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.messagingSenderId,
-    appId:
-      ((import.meta.env?.VITE_FIREBASE_APP_ID as string | undefined) || '').trim() ||
-      DEFAULT_FIREBASE_CONFIG.appId,
+    apiKey: readViteEnv('VITE_FIREBASE_API_KEY'),
+    authDomain: readViteEnv('VITE_FIREBASE_AUTH_DOMAIN'),
+    projectId: readViteEnv('VITE_FIREBASE_PROJECT_ID'),
+    storageBucket: readViteEnv('VITE_FIREBASE_STORAGE_BUCKET'),
+    messagingSenderId: readViteEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+    appId: readViteEnv('VITE_FIREBASE_APP_ID'),
   };
 }
 
@@ -112,9 +108,28 @@ function getFirestoreDb(): Firestore | null {
   if (cachedDb) return cachedDb;
 
   const cfg = getFirebaseConfig();
-  cachedApp = getApps().length > 0 ? getApp() : initializeApp(cfg);
-  cachedDb = getFirestore(cachedApp);
-  return cachedDb;
+  try {
+    const firebaseOptions: Record<string, string> = {
+      apiKey: cfg.apiKey,
+      projectId: cfg.projectId,
+      appId: cfg.appId,
+    };
+    if (cfg.authDomain) firebaseOptions.authDomain = cfg.authDomain;
+    if (cfg.storageBucket) firebaseOptions.storageBucket = cfg.storageBucket;
+    if (cfg.messagingSenderId) firebaseOptions.messagingSenderId = cfg.messagingSenderId;
+
+    cachedApp = getApps().length > 0 ? getApp() : initializeApp(firebaseOptions);
+    cachedDb = getFirestore(cachedApp);
+    return cachedDb;
+  } catch (err) {
+    console.warn(
+      'Firebase initialization skipped (missing or invalid env configuration):',
+      err instanceof Error ? err.message : String(err)
+    );
+    cachedApp = null;
+    cachedDb = null;
+    return null;
+  }
 }
 
 let connectionTested = false;
@@ -424,6 +439,12 @@ export async function verifyOrClaimLocalCreatorKey(
 ): Promise<{ ok: boolean; claimedNew?: boolean; error?: string }> {
   const normalized = email.trim().toLowerCase();
   const trimmedKey = adminKey.trim();
+  if (!getAdminEmail()) {
+    return {
+      ok: false,
+      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
+    };
+  }
   if (!isCreatorEmail(normalized)) {
     return { ok: false, error: 'Неверный E-mail создателя площадки.' };
   }
@@ -453,6 +474,12 @@ async function verifyOrClaimCreatorKeyAcrossFirestore(
   normalizedEmail: string,
   trimmedKey: string
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!getAdminEmail()) {
+    return {
+      ok: false,
+      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
+    };
+  }
   if (!isCreatorEmail(normalizedEmail)) {
     return { ok: false, error: 'Неверный E-mail создателя площадки.' };
   }
@@ -516,6 +543,14 @@ export async function fetchAllSharedAnalysesAsCreator(
   const normalized = email.trim().toLowerCase();
   const trimmedKey = adminKey.trim();
 
+  if (!getAdminEmail()) {
+    return {
+      ok: false,
+      configured: isFirestoreConfigured(),
+      projects: [],
+      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
+    };
+  }
   if (!isCreatorEmail(normalized) || !trimmedKey) {
     return {
       ok: false,

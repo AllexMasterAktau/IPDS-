@@ -337,7 +337,7 @@ export default function App() {
 
   const isAuthenticated = Boolean(session?.sessionToken && activeUserEmail);
   const isAdmin = Boolean(
-    isAuthenticated && activeUserEmail === ADMIN_EMAIL && session?.isAdmin
+    isAuthenticated && ADMIN_EMAIL && activeUserEmail === ADMIN_EMAIL && session?.isAdmin
   );
   const creatorDbUnlocked = firestoreConfigured
     ? Boolean(isAdmin && creatorAdminKey)
@@ -410,7 +410,7 @@ export default function App() {
 
   const handleUnlockSharedFeed = useCallback(
     async (adminKey: string): Promise<boolean> => {
-      if (!activeUserEmail || activeUserEmail !== ADMIN_EMAIL) return false;
+      if (!ADMIN_EMAIL || !activeUserEmail || activeUserEmail !== ADMIN_EMAIL) return false;
       setAdminLoading(true);
       setCreatorSyncError(null);
       try {
@@ -626,7 +626,7 @@ export default function App() {
   ) => {
     const normalizedEmail = project.email.trim().toLowerCase();
     const keepCreatorAdmin =
-      Boolean(isAdmin && normalizedEmail === ADMIN_EMAIL);
+      Boolean(isAdmin && ADMIN_EMAIL && normalizedEmail === ADMIN_EMAIL);
 
     setProjects((prev) => upsertUniqueProject(prev, project));
     broadcastProjectUpdate(project);
@@ -657,7 +657,9 @@ export default function App() {
     }
   ) => {
     const verifiedEmail = newSession.email.trim().toLowerCase();
-    const adminUser = Boolean(newSession.isAdmin && verifiedEmail === ADMIN_EMAIL);
+    const adminUser = Boolean(
+      newSession.isAdmin && ADMIN_EMAIL && verifiedEmail === ADMIN_EMAIL
+    );
 
     const mergedProjects = deduplicateProjects([...projects, ...localProjects]);
     const scopedUserProjects = mergedProjects.filter(
