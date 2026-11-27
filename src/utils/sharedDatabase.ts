@@ -20,6 +20,7 @@ import type {
   RegionPreset,
 } from '../types/ipds';
 
+const FALLBACK_ADMIN_EMAIL = 'allmasters13@gmail.com';
 const LS_LOCAL_CREATOR_KEY_HASH = 'ipds_creator_key_hash_v1';
 
 export const FIRESTORE_COLLECTION_ANALYSES = 'ipds_shared_analyses';
@@ -75,13 +76,13 @@ function logFirestoreError(
 }
 
 export function getAdminEmail(): string {
-  return readViteEnv('VITE_ADMIN_EMAIL').toLowerCase();
+  const fromEnv = readViteEnv('VITE_ADMIN_EMAIL').trim().toLowerCase();
+  return fromEnv || FALLBACK_ADMIN_EMAIL;
 }
 
 export function isCreatorEmail(email: string | null | undefined): boolean {
-  const adminEmail = getAdminEmail();
-  if (!adminEmail || !email) return false;
-  return email.trim().toLowerCase() === adminEmail;
+  if (!email) return false;
+  return email.trim().toLowerCase() === getAdminEmail();
 }
 
 export function getFirebaseConfig(): FirebaseEnvConfig {
@@ -439,12 +440,6 @@ export async function verifyOrClaimLocalCreatorKey(
 ): Promise<{ ok: boolean; claimedNew?: boolean; error?: string }> {
   const normalized = email.trim().toLowerCase();
   const trimmedKey = adminKey.trim();
-  if (!getAdminEmail()) {
-    return {
-      ok: false,
-      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
-    };
-  }
   if (!isCreatorEmail(normalized)) {
     return { ok: false, error: 'Неверный E-mail создателя площадки.' };
   }
@@ -474,12 +469,6 @@ async function verifyOrClaimCreatorKeyAcrossFirestore(
   normalizedEmail: string,
   trimmedKey: string
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!getAdminEmail()) {
-    return {
-      ok: false,
-      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
-    };
-  }
   if (!isCreatorEmail(normalizedEmail)) {
     return { ok: false, error: 'Неверный E-mail создателя площадки.' };
   }
@@ -543,14 +532,6 @@ export async function fetchAllSharedAnalysesAsCreator(
   const normalized = email.trim().toLowerCase();
   const trimmedKey = adminKey.trim();
 
-  if (!getAdminEmail()) {
-    return {
-      ok: false,
-      configured: isFirestoreConfigured(),
-      projects: [],
-      error: 'E-mail администратора (VITE_ADMIN_EMAIL) не задан в переменных окружения.',
-    };
-  }
   if (!isCreatorEmail(normalized) || !trimmedKey) {
     return {
       ok: false,
