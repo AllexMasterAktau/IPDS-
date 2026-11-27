@@ -62,6 +62,7 @@ export const TRANSLATIONS = {
       changeEmail: 'Сменить E-mail',
       logout: 'Выйти',
       loginByEmail: 'Войти по E-mail (история)',
+      creatorLogin: 'Доступ создателя',
     },
     welcome: {
       kicker: 'Intelligent Business Systems · Local-First Архитектура',
@@ -219,6 +220,17 @@ export const TRANSLATIONS = {
       loginKeyBtn: 'Войти по ключу',
       errEmail: 'Введите корректный адрес электронной почты.',
       errEmpty: 'Укажите адрес электронной почты.',
+      tabUser: 'Пользователь',
+      tabCreator: 'Создатель площадки',
+      labelCreatorEmail: 'E-mail создателя площадки',
+      labelAdminKey: 'Ключ администратора',
+      placeholderAdminKey: 'Введите секретный ключ администратора',
+      creatorVerifyBtn: 'Войти как создатель',
+      creatorDbHint: 'Открывает ленту готовых анализов всех пользователей из общей базы.',
+      creatorLocalSetupHint:
+        'Первый локальный вход: введённый ключ будет сохранён как локальный ключ администратора для этого браузера.',
+      creatorEnterKeyErr: 'Введите ключ администратора (минимум 4 символа).',
+      creatorSwitchBtn: 'Вход создателя (по ключу)',
     },
     admin: {
       badge: 'Панель администратора',
@@ -278,6 +290,21 @@ export const TRANSLATIONS = {
       docsShort: 'докум.',
       msgsShort: 'сообщ.',
       projectsCountWord: 'проект(ов)',
+      dbStatusLabel: 'Общая база анализов:',
+      dbConnected: 'Firebase Firestore подключена',
+      dbLocalOnly: 'Локальный режим (без общей БД)',
+      unlockTitle: 'Подтвердите ключ администратора для загрузки анализов всех пользователей',
+      unlockDesc:
+        'После обновления страницы ключ не хранится в открытом виде в браузере. Введите ключ администратора, чтобы загрузить готовые анализы из общей базы.',
+      unlockPlaceholder: 'Ключ администратора',
+      unlockBtn: 'Загрузить анализы',
+      unlocking: 'Проверка...',
+      btnDownloadPdf: 'Скачать PDF',
+      downloadingPdf: 'PDF...',
+      btnOpenReview: 'Открыть разбор',
+      sharedSourceBadge: 'Из общей базы (без файлов)',
+      docsAtAnalysisLabel: 'Файлов при анализе:',
+      tabReadyFeed: 'Готовые анализы',
     },
     dialogue: {
       initiator: 'Инициатор',
@@ -297,6 +324,8 @@ export const TRANSLATIONS = {
       docsLocalBadge: 'Исходные файлы не покидают устройство',
       docsEmpty:
         'Файлы пока не прикреплены. Нажмите «+ Добавить файлы» выше или прикрепите документы в диалоге ниже.',
+      docsRemoteNotice:
+        'Проект открыт из общей базы готовых анализов без исходных файлов (на устройстве автора было прикреплено файлов: {count}). Отчёт, контуры и выгрузка в PDF полностью доступны.',
       chatTitle: 'Диалог с инвестиционным аналитиком',
       chatMemoryNote: 'Память сохраняется по E-mail',
       chatEmptyTitle: 'История диалога по проекту пока пуста',
@@ -536,6 +565,7 @@ export const TRANSLATIONS = {
       changeEmail: 'Switch E-mail',
       logout: 'Log out',
       loginByEmail: 'Sign in by E-mail (history)',
+      creatorLogin: 'Creator access',
     },
     welcome: {
       kicker: 'Intelligent Business Systems · Local-First Architecture',
@@ -692,6 +722,17 @@ export const TRANSLATIONS = {
       loginKeyBtn: 'Sign In with Key',
       errEmail: 'Please enter a valid E-mail address.',
       errEmpty: 'Please enter your E-mail address.',
+      tabUser: 'User',
+      tabCreator: 'Platform Creator',
+      labelCreatorEmail: 'Creator E-mail',
+      labelAdminKey: 'Administrator Key',
+      placeholderAdminKey: 'Enter your secret administrator key',
+      creatorVerifyBtn: 'Sign In as Creator',
+      creatorDbHint: 'Unlocks the feed of all users’ completed analyses from the shared database.',
+      creatorLocalSetupHint:
+        'First local setup: the entered key will be stored as the local administrator key for this browser.',
+      creatorEnterKeyErr: 'Please enter the administrator key (at least 4 characters).',
+      creatorSwitchBtn: 'Creator Access (with key)',
     },
     admin: {
       badge: 'Administrator Mode',
@@ -751,6 +792,21 @@ export const TRANSLATIONS = {
       docsShort: 'docs',
       msgsShort: 'msgs',
       projectsCountWord: 'project(s)',
+      dbStatusLabel: 'Shared analyses DB:',
+      dbConnected: 'Firebase Firestore connected',
+      dbLocalOnly: 'Local mode (no shared DB)',
+      unlockTitle: 'Verify administrator key to load all users’ analyses',
+      unlockDesc:
+        'For security, the administrator key is never stored in plain text after reload. Enter your key to fetch completed analyses from the shared database.',
+      unlockPlaceholder: 'Administrator key',
+      unlockBtn: 'Load Analyses',
+      unlocking: 'Verifying...',
+      btnDownloadPdf: 'Download PDF',
+      downloadingPdf: 'PDF...',
+      btnOpenReview: 'Open Review',
+      sharedSourceBadge: 'From shared DB (no files)',
+      docsAtAnalysisLabel: 'Source files at analysis:',
+      tabReadyFeed: 'Ready Analyses',
     },
     dialogue: {
       initiator: 'Initiator',
@@ -770,6 +826,8 @@ export const TRANSLATIONS = {
       docsLocalBadge: 'Source files stay on device',
       docsEmpty:
         'No files attached yet. Click "+ Add Files" above or attach documents in the dialogue below.',
+      docsRemoteNotice:
+        'Loaded from the shared analyses database without source files ({count} source file(s) remained on the author’s device). Full report, contours, and PDF export remain available.',
       chatTitle: 'Dialogue with Investment Analyst',
       chatMemoryNote: 'Memory saved under E-mail',
       chatEmptyTitle: 'Project dialogue history is empty',

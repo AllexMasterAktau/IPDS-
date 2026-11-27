@@ -18,6 +18,10 @@ export function normalizeProjectName(name: string | undefined | null): string {
     .toLowerCase();
 }
 
+function normalizeOwnerEmail(email: string | undefined | null): string {
+  return (email || '').trim().toLowerCase();
+}
+
 function getTimestampMs(iso: string | undefined): number {
   if (!iso) return 0;
   const ms = new Date(iso).getTime();
@@ -31,25 +35,53 @@ function getTimestampMs(iso: string | undefined): number {
  * 3) при равенстве дат — запись с большим числом сообщений и документов.
  */
 export function pickPreferredProject(a: ProjectRecord, b: ProjectRecord): ProjectRecord {
+  const mergedDocs = mergeDocumentsUnique(a.documents, b.documents);
+  const maxDocsCount = Math.max(
+    a.docsCount ?? a.documents?.length ?? 0,
+    b.docsCount ?? b.documents?.length ?? 0,
+    mergedDocs.length
+  );
+
   const aReady = Boolean(a.analysis);
   const bReady = Boolean(b.analysis);
+
+  let primary: ProjectRecord;
+  let secondary: ProjectRecord;
+
   if (aReady !== bReady) {
-    return aReady ? a : b;
+    primary = aReady ? a : b;
+    secondary = aReady ? b : a;
+  } else {
+    const aUpdated = getTimestampMs(a.updatedAt) || getTimestampMs(a.createdAt);
+    const bUpdated = getTimestampMs(b.updatedAt) || getTimestampMs(b.createdAt);
+    if (aUpdated !== bUpdated) {
+      primary = aUpdated > bUpdated ? a : b;
+      secondary = aUpdated > bUpdated ? b : a;
+    } else {
+      const aRichness = (a.dialogue?.length || 0) + (a.documents?.length || 0);
+      const bRichness = (b.dialogue?.length || 0) + (b.documents?.length || 0);
+      primary = aRichness >= bRichness ? a : b;
+      secondary = primary === a ? b : a;
+    }
   }
 
-  const aUpdated = getTimestampMs(a.updatedAt) || getTimestampMs(a.createdAt);
-  const bUpdated = getTimestampMs(b.updatedAt) || getTimestampMs(b.createdAt);
-  if (aUpdated !== bUpdated) {
-    return aUpdated > bUpdated ? a : b;
-  }
+  // Сохраняем локальные документы с ПК пользователя, даже если более свежая версия пришла из общей БД без файлов
+  const preservedDialogue =
+    (primary.dialogue?.length || 0) >= (secondary.dialogue?.length || 0)
+      ? primary.dialogue || []
+      : secondary.dialogue || [];
 
-  const aRichness = (a.dialogue?.length || 0) + (a.documents?.length || 0);
-  const bRichness = (b.dialogue?.length || 0) + (b.documents?.length || 0);
-  return aRichness >= bRichness ? a : b;
+  return {
+    ...primary,
+    documents: mergedDocs,
+    docsCount: maxDocsCount,
+    dialogue: preservedDialogue,
+    sharedFromDatabase: Boolean(primary.sharedFromDatabase && mergedDocs.length === 0),
+  };
 }
 
 /**
- * Удаляет дубликаты проектов (по id и по нормализованному названию),
+ * Удаляет дубликаты проектов (по id и по паре email + нормализованное название),
  * оставляя более свежий вариант или вариант со статусом «Отчёт готов»,
  * и сортирует результат от самых свежих к более старым.
  */
@@ -63,15 +95,16 @@ export function deduplicateProjects(projects: ProjectRecord[]): ProjectRecord[] 
     byId.set(proj.id, prev ? pickPreferredProject(prev, proj) : proj);
   }
 
-  const byName = new Map<string, ProjectRecord>();
+  const byOwnerAndName = new Map<string, ProjectRecord>();
   for (const proj of byId.values()) {
+    const owner = normalizeOwnerEmail(proj.email);
     const normName = normalizeProjectName(proj.projectName);
-    const key = normName || `id:${proj.id}`;
-    const existing = byName.get(key);
-    byName.set(key, existing ? pickPreferredProject(existing, proj) : proj);
+    const key = normName ? `${owner}::${normName}` : `id:${proj.id}`;
+    const existing = byOwnerAndName.get(key);
+    byOwnerAndName.set(key, existing ? pickPreferredProject(existing, proj) : proj);
   }
 
-  return Array.from(byName.values()).sort((a, b) => {
+  return Array.from(byOwnerAndName.values()).sort((a, b) => {
     const aTime = getTimestampMs(a.updatedAt) || getTimestampMs(a.createdAt);
     const bTime = getTimestampMs(b.updatedAt) || getTimestampMs(b.createdAt);
     return bTime - aTime;
@@ -79,9 +112,8 @@ export function deduplicateProjects(projects: ProjectRecord[]): ProjectRecord[] 
 }
 
 /**
- * Ищет существующий проект по нормализованному названию
- * (при наличии нескольких совпадений возвращает приоритетный вариант,
- * отдавая предпочтение совпадению по E-mail при равенстве прочих условий).
+ * Ищет существующий проект по нормализованному названию строго в рамках указанного E-mail
+ * (чтобы проекты разных пользователей с одинаковыми названиями не смешивались).
  */
 export function findProjectByNormalizedName(
   projects: ProjectRecord[],
@@ -92,15 +124,16 @@ export function findProjectByNormalizedName(
   if (!targetName) return null;
 
   const deduped = deduplicateProjects(projects);
-  const normalizedEmail = (ownerEmail || '').trim().toLowerCase();
+  const normalizedEmail = normalizeOwnerEmail(ownerEmail);
 
   if (normalizedEmail) {
-    const sameEmailMatch = deduped.find(
-      (p) =>
-        normalizeProjectName(p.projectName) === targetName &&
-        (p.email || '').trim().toLowerCase() === normalizedEmail
+    return (
+      deduped.find(
+        (p) =>
+          normalizeProjectName(p.projectName) === targetName &&
+          normalizeOwnerEmail(p.email) === normalizedEmail
+      ) ?? null
     );
-    if (sameEmailMatch) return sameEmailMatch;
   }
 
   return deduped.find((p) => normalizeProjectName(p.projectName) === targetName) ?? null;
@@ -133,6 +166,7 @@ export function mergeProjectUpdate(
   existing: ProjectRecord,
   incoming: Omit<ProjectRecord, 'id' | 'createdAt' | 'analysis' | 'manualOverrides' | 'dialogue'>
 ): ProjectRecord {
+  const mergedDocs = mergeDocumentsUnique(existing.documents, incoming.documents);
   return {
     ...existing,
     fullName: incoming.fullName || existing.fullName,
@@ -147,24 +181,43 @@ export function mergeProjectUpdate(
     comment: incoming.comment ?? existing.comment,
     currencyCode: incoming.currencyCode,
     currencySymbol: incoming.currencySymbol,
-    documents: mergeDocumentsUnique(existing.documents, incoming.documents),
+    documents: mergedDocs,
+    docsCount: mergedDocs.length,
     leadSyncStatus: incoming.leadSyncStatus,
     updatedAt: incoming.updatedAt,
   };
 }
 
 /**
- * Вставляет или обновляет проект в списке с гарантированной уникальностью по id и названию.
+ * Вставляет или обновляет проект в списке с гарантированной уникальностью
+ * по id и паре (email + название).
  */
 export function upsertUniqueProject(
   projects: ProjectRecord[],
   updated: ProjectRecord
 ): ProjectRecord[] {
+  const targetOwner = normalizeOwnerEmail(updated.email);
   const targetName = normalizeProjectName(updated.projectName);
   const filtered = projects.filter(
-    (p) => p.id !== updated.id && normalizeProjectName(p.projectName) !== targetName
+    (p) =>
+      p.id !== updated.id &&
+      !(
+        targetName &&
+        normalizeOwnerEmail(p.email) === targetOwner &&
+        normalizeProjectName(p.projectName) === targetName
+      )
   );
   return deduplicateProjects([updated, ...filtered]);
+}
+
+/**
+ * Объединяет локальные проекты (с файлами) и проекты из общей БД (без файлов).
+ */
+export function mergeProjectRecordsList(
+  localProjects: ProjectRecord[],
+  remoteProjects: ProjectRecord[]
+): ProjectRecord[] {
+  return deduplicateProjects([...localProjects, ...remoteProjects]);
 }
 
 /**

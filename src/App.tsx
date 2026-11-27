@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Menu, Plus } from 'lucide-react';
 import { AdminPanelView } from './components/AdminPanelView';
 import { AnalystDialogue } from './components/AnalystDialogue';
@@ -23,8 +23,18 @@ import {
 import {
   deduplicateProjectPreviews,
   deduplicateProjects,
+  mergeProjectRecordsList,
   upsertUniqueProject,
 } from './utils/projectDedup';
+import {
+  deleteSharedAnalysis,
+  fetchAllSharedAnalysesAsCreator,
+  fetchMySharedAnalyses,
+  getAdminEmail,
+  isFirestoreConfigured,
+  syncProjectToSharedDb,
+  testFirestoreConnection,
+} from './utils/sharedDatabase';
 import type {
   AdminUserSummary,
   CurrencyCode,
@@ -37,7 +47,7 @@ import type {
   UserSession,
 } from './types/ipds';
 
-const ADMIN_EMAIL = 'allmasters13@gmail.com';
+const ADMIN_EMAIL = getAdminEmail();
 const LS_PROJECTS_KEY = 'ipds_projects_v1';
 const LS_SESSION_KEY = 'ipds_session_v1';
 const LS_ACTIVE_PROJECT_KEY = 'ipds_active_project_v1';
@@ -88,7 +98,7 @@ export default function App() {
         email: latest.email,
         sessionToken: `local_sess_${Date.now()}`,
         verifiedAt: new Date().toISOString(),
-        isAdmin: latest.email.trim().toLowerCase() === ADMIN_EMAIL,
+        isAdmin: false,
       };
     }
     return null;
@@ -108,9 +118,15 @@ export default function App() {
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'user' | 'creator'>('user');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [creatorAdminKey, setCreatorAdminKey] = useState<string>('');
+  const [sharedCreatorProjects, setSharedCreatorProjects] = useState<ProjectRecord[]>([]);
+  const [creatorSyncError, setCreatorSyncError] = useState<string | null>(null);
+  const overrideSyncTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const firestoreConfigured = isFirestoreConfigured();
   const [adminKeyMode] = useState<boolean>(() => {
     try {
       const adminParam = urlParams.get('admin');
@@ -320,15 +336,19 @@ export default function App() {
   );
 
   const isAuthenticated = Boolean(session?.sessionToken && activeUserEmail);
-  const isAdmin = Boolean(isAuthenticated && activeUserEmail === ADMIN_EMAIL);
+  const isAdmin = Boolean(
+    isAuthenticated && activeUserEmail === ADMIN_EMAIL && session?.isAdmin
+  );
+  const creatorDbUnlocked = firestoreConfigured
+    ? Boolean(isAdmin && creatorAdminKey)
+    : isAdmin;
   const canManageGeminiKey = isAdmin || adminKeyMode;
   const adminGasConfigured = Boolean(gasWebhookUrl);
 
-
-
   const adminProjects = useMemo(
-    () => deduplicateProjects(projects),
-    [projects]
+    () =>
+      isAdmin ? deduplicateProjects([...projects, ...sharedCreatorProjects]) : [],
+    [isAdmin, projects, sharedCreatorProjects]
   );
 
   const adminUsers = useMemo<AdminUserSummary[]>(() => {
@@ -369,11 +389,69 @@ export default function App() {
     return deduplicateProjectPreviews(mapped).slice(0, 5);
   }, [activeUserEmail, projects]);
 
+  // Проверка соединения с Firebase Firestore при запуске
+  useEffect(() => {
+    if (!firestoreConfigured) return;
+    void testFirestoreConnection();
+  }, [firestoreConfigured]);
+
+  // Автозагрузка собственных проектов пользователя из общей базы при входе / старте
+  useEffect(() => {
+    if (!firestoreConfigured || !activeUserEmail) return;
+    let cancelled = false;
+    void fetchMySharedAnalyses(activeUserEmail).then((res) => {
+      if (cancelled || !res.ok || res.projects.length === 0) return;
+      setProjects((prev) => mergeProjectRecordsList(prev, res.projects));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [firestoreConfigured, activeUserEmail]);
+
+  const handleUnlockSharedFeed = useCallback(
+    async (adminKey: string): Promise<boolean> => {
+      if (!activeUserEmail || activeUserEmail !== ADMIN_EMAIL) return false;
+      setAdminLoading(true);
+      setCreatorSyncError(null);
+      try {
+        const res = await fetchAllSharedAnalysesAsCreator(activeUserEmail, adminKey);
+        if (!res.ok) {
+          setCreatorSyncError(
+            res.error ||
+              (language === 'en'
+                ? 'Invalid administrator key.'
+                : 'Неверный ключ администратора.')
+          );
+          return false;
+        }
+        setCreatorAdminKey(adminKey);
+        setSharedCreatorProjects(res.projects);
+        return true;
+      } finally {
+        setAdminLoading(false);
+      }
+    },
+    [activeUserEmail, language]
+  );
+
   const refreshAdminLocal = useCallback(() => {
     setAdminLoading(true);
+    setCreatorSyncError(null);
     setProjects(deduplicateProjects(readJsonFromStorage<ProjectRecord[]>(LS_PROJECTS_KEY, [])));
+    if (firestoreConfigured && isAdmin && creatorAdminKey && activeUserEmail) {
+      void fetchAllSharedAnalysesAsCreator(activeUserEmail, creatorAdminKey)
+        .then((res) => {
+          if (res.ok) {
+            setSharedCreatorProjects(res.projects);
+          } else if (res.error) {
+            setCreatorSyncError(res.error);
+          }
+        })
+        .finally(() => setAdminLoading(false));
+      return;
+    }
     setAdminLoading(false);
-  }, []);
+  }, [firestoreConfigured, isAdmin, creatorAdminKey, activeUserEmail]);
 
   const handleAdminSyncPending = useCallback(async () => {
     if (!session?.sessionToken) return;
@@ -428,18 +506,14 @@ export default function App() {
     }
   }, [gasWebhookUrl, language, projects, session?.sessionToken]);
 
+  // Строгая изоляция: обычный пользователь видит ТОЛЬКО свои проекты
   const userProjects = useMemo(() => {
+    if (!activeUserEmail) return [];
     const uniqueAll = deduplicateProjects(projects);
-    const email = activeUserEmail || (uniqueAll[0]?.email ?? null);
-    if (!email) return uniqueAll;
-    const normalizedActive = email.trim().toLowerCase();
-    if (normalizedActive === ADMIN_EMAIL || isAdmin) {
-      return uniqueAll;
-    }
-    return deduplicateProjects(
-      uniqueAll.filter((p) => (p.email || '').trim().toLowerCase() === normalizedActive)
+    return uniqueAll.filter(
+      (p) => (p.email || '').trim().toLowerCase() === activeUserEmail
     );
-  }, [projects, activeUserEmail, isAdmin]);
+  }, [projects, activeUserEmail]);
 
   // Кросс-вкладочная синхронизация пересчитанных цифр и настроек языка/валюты между окнами
   useEffect(() => {
@@ -462,6 +536,8 @@ export default function App() {
       } else if (payload?.type === 'session_cleared') {
         setSession(null);
         setActiveProjectId(null);
+        setCreatorAdminKey('');
+        setSharedCreatorProjects([]);
       }
     };
     return () => channel.close();
@@ -483,9 +559,13 @@ export default function App() {
     if (activeProjectId) {
       const fromUser = userProjects.find((p) => p.id === activeProjectId);
       if (fromUser) return fromUser;
+      if (isAdmin) {
+        const fromAdmin = adminProjects.find((p) => p.id === activeProjectId);
+        if (fromAdmin) return fromAdmin;
+      }
     }
     return userProjects[0] ?? null;
-  }, [activeUserEmail, userProjects, activeProjectId]);
+  }, [activeUserEmail, userProjects, activeProjectId, isAdmin, adminProjects]);
 
   // Защита от попадания на закрытые вкладки без активного подтверждённого E-mail
   useEffect(() => {
@@ -500,12 +580,43 @@ export default function App() {
     }
   }, [isReportRoute, activeUserEmail, activeTab, isAdmin]);
 
-  const upsertLocalProject = useCallback(
+  const syncToSharedDatabaseNow = useCallback(
     (updated: ProjectRecord) => {
-      setProjects((prev) => upsertUniqueProject(prev, updated));
-      broadcastProjectUpdate(updated);
+      if (!firestoreConfigured) return;
+      void syncProjectToSharedDb(updated).then((res) => {
+        if (!res.synced) return;
+        const applyMeta = (list: ProjectRecord[]) =>
+          list.map((p) =>
+            p.id === updated.id
+              ? {
+                  ...p,
+                  sharedSyncStatus: 'synced' as const,
+                  sharedSyncedAt: new Date().toISOString(),
+                }
+              : p
+          );
+        setProjects(applyMeta);
+        if (updated.sharedFromDatabase) {
+          setSharedCreatorProjects(applyMeta);
+        }
+      });
     },
-    [broadcastProjectUpdate]
+    [firestoreConfigured]
+  );
+
+  const upsertLocalProject = useCallback(
+    (updated: ProjectRecord, options?: { skipSharedSync?: boolean }) => {
+      if (updated.sharedFromDatabase) {
+        setSharedCreatorProjects((prev) => upsertUniqueProject(prev, updated));
+      } else {
+        setProjects((prev) => upsertUniqueProject(prev, updated));
+        broadcastProjectUpdate(updated);
+      }
+      if (!options?.skipSharedSync) {
+        syncToSharedDatabaseNow(updated);
+      }
+    },
+    [broadcastProjectUpdate, syncToSharedDatabaseNow]
   );
 
   const handleProjectCreated = (
@@ -514,41 +625,63 @@ export default function App() {
     accessKeyHint?: string
   ) => {
     const normalizedEmail = project.email.trim().toLowerCase();
+    const keepCreatorAdmin =
+      Boolean(isAdmin && normalizedEmail === ADMIN_EMAIL);
+
     setProjects((prev) => upsertUniqueProject(prev, project));
     broadcastProjectUpdate(project);
+    syncToSharedDatabaseNow(project);
     setActiveProjectId(project.id);
     if (sessionToken) {
       setSession({
-        email: project.email,
+        email: normalizedEmail,
         sessionToken,
         accessKeyHint,
         verifiedAt: new Date().toISOString(),
-        isAdmin: normalizedEmail === ADMIN_EMAIL,
+        isAdmin: keepCreatorAdmin,
       });
+      if (!keepCreatorAdmin) {
+        setCreatorAdminKey('');
+        setSharedCreatorProjects([]);
+      }
     }
     setActiveTab('dialogue');
   };
 
-  const handleAuthenticated = (newSession: UserSession, localProjects: ProjectRecord[]) => {
+  const handleAuthenticated = (
+    newSession: UserSession,
+    localProjects: ProjectRecord[],
+    options?: {
+      creatorKey?: string;
+      creatorRemoteProjects?: ProjectRecord[];
+    }
+  ) => {
     const verifiedEmail = newSession.email.trim().toLowerCase();
-    const adminUser = verifiedEmail === ADMIN_EMAIL;
+    const adminUser = Boolean(newSession.isAdmin && verifiedEmail === ADMIN_EMAIL);
 
     const mergedProjects = deduplicateProjects([...projects, ...localProjects]);
+    const scopedUserProjects = mergedProjects.filter(
+      (p) => (p.email || '').trim().toLowerCase() === verifiedEmail
+    );
 
-    const scopedUserProjects = adminUser
-      ? mergedProjects
-      : mergedProjects.filter((p) => p.email.trim().toLowerCase() === verifiedEmail);
-
-    setSession({ ...newSession, isAdmin: adminUser });
+    setSession({ ...newSession, email: verifiedEmail, isAdmin: adminUser });
     setProjects(mergedProjects);
+    setCreatorSyncError(null);
 
     if (adminUser) {
-      if (mergedProjects.length > 0) {
-        setActiveProjectId(mergedProjects[0].id);
+      setCreatorAdminKey(options?.creatorKey || '');
+      const remoteList = options?.creatorRemoteProjects || [];
+      setSharedCreatorProjects(remoteList);
+      const combinedAdmin = deduplicateProjects([...mergedProjects, ...remoteList]);
+      if (combinedAdmin.length > 0) {
+        setActiveProjectId(combinedAdmin[0].id);
       }
       setActiveTab('admin');
       return;
     }
+
+    setCreatorAdminKey('');
+    setSharedCreatorProjects([]);
 
     if (scopedUserProjects.length > 0) {
       setActiveProjectId(scopedUserProjects[0].id);
@@ -562,6 +695,9 @@ export default function App() {
   const resetToUnauthenticatedState = useCallback((nextTab: ActiveTab) => {
     setSession(null);
     setActiveProjectId(null);
+    setCreatorAdminKey('');
+    setSharedCreatorProjects([]);
+    setCreatorSyncError(null);
     localStorage.removeItem(LS_SESSION_KEY);
     localStorage.removeItem(LS_ACTIVE_PROJECT_KEY);
     setActiveTab(nextTab);
@@ -590,6 +726,7 @@ export default function App() {
         ? 'projects'
         : activeTab
     );
+    setAuthModalMode('user');
     setAuthModalOpen(true);
   }, [activeTab, resetToUnauthenticatedState]);
 
@@ -609,6 +746,10 @@ export default function App() {
       const updated: ProjectRecord = {
         ...targetProject,
         analysis,
+        docsCount:
+          targetProject.documents.length > 0
+            ? targetProject.documents.length
+            : targetProject.docsCount ?? 0,
         manualOverrides: {},
         updatedAt: new Date().toISOString(),
       };
@@ -639,9 +780,16 @@ export default function App() {
         manualOverrides: overrides,
         updatedAt: new Date().toISOString(),
       };
-      upsertLocalProject(updated);
+      upsertLocalProject(updated, { skipSharedSync: true });
+      if (firestoreConfigured) {
+        const existingTimer = overrideSyncTimersRef.current[project.id];
+        if (existingTimer) clearTimeout(existingTimer);
+        overrideSyncTimersRef.current[project.id] = setTimeout(() => {
+          syncToSharedDatabaseNow(updated);
+        }, 800);
+      }
     },
-    [upsertLocalProject]
+    [upsertLocalProject, firestoreConfigured, syncToSharedDatabaseNow]
   );
 
   const handleUpdateProjectMeta = useCallback(
@@ -701,8 +849,16 @@ export default function App() {
 
   const handleDeleteProject = (projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setSharedCreatorProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) {
       setActiveProjectId(null);
+    }
+    if (firestoreConfigured && activeUserEmail) {
+      void deleteSharedAnalysis(
+        projectId,
+        activeUserEmail,
+        isAdmin ? creatorAdminKey : undefined
+      );
     }
   };
 
@@ -797,7 +953,10 @@ export default function App() {
                 {!activeUserEmail && (
                   <button
                     type="button"
-                    onClick={() => setAuthModalOpen(true)}
+                    onClick={() => {
+                      setAuthModalMode('user');
+                      setAuthModalOpen(true);
+                    }}
                     className="inline-flex items-center px-5 py-2.5 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer"
                   >
                     {t.projects.unlockBtn}
@@ -828,6 +987,7 @@ export default function App() {
 
         <EmailAuthModal
           isOpen={authModalOpen}
+          initialMode={authModalMode}
           gasWebhookUrl={gasWebhookUrl}
           language={language}
           onClose={() => setAuthModalOpen(false)}
@@ -860,7 +1020,14 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenAuthModal={() => setAuthModalOpen(true)}
+        onOpenAuthModal={() => {
+          setAuthModalMode('user');
+          setAuthModalOpen(true);
+        }}
+        onOpenCreatorAuthModal={() => {
+          setAuthModalMode('creator');
+          setAuthModalOpen(true);
+        }}
         onSwitchEmail={handleSwitchEmail}
         onLogout={handleLogout}
         isAuthenticated={isAuthenticated}
@@ -918,7 +1085,7 @@ export default function App() {
               }}
             />
 
-            {activeProject?.analysis && (
+            {activeProject?.analysis && !activeProject.sharedFromDatabase && (
               <a
                 href={`/?view=report&projectId=${encodeURIComponent(activeProject.id)}`}
                 target="_blank"
@@ -963,7 +1130,10 @@ export default function App() {
               latestProject={activeProject}
               language={language}
               onOpenCreateModal={() => setCreateModalOpen(true)}
-              onOpenAuthModal={() => setAuthModalOpen(true)}
+              onOpenAuthModal={() => {
+                setAuthModalMode('user');
+                setAuthModalOpen(true);
+              }}
               onOpenLatestProject={() => {
                 if (activeProject) {
                   setActiveTab(activeProject.analysis ? 'report' : 'dialogue');
@@ -992,7 +1162,10 @@ export default function App() {
               onRunAnalysis={(proj) => void handleRunAnalysis(proj)}
               onDeleteProject={handleDeleteProject}
               onOpenCreateModal={() => setCreateModalOpen(true)}
-              onOpenAuthModal={() => setAuthModalOpen(true)}
+              onOpenAuthModal={() => {
+                setAuthModalMode('user');
+                setAuthModalOpen(true);
+              }}
             />
           )}
 
@@ -1043,13 +1216,18 @@ export default function App() {
               language={language}
               displayCurrency={displayCurrency}
               fxRates={fxState.rates}
+              adminEmail={ADMIN_EMAIL}
               projects={adminProjects}
               users={adminUsers}
               gasConfigured={adminGasConfigured}
+              firestoreConfigured={firestoreConfigured}
+              creatorDbUnlocked={creatorDbUnlocked}
+              creatorSyncError={creatorSyncError}
               loading={adminLoading}
               syncingPending={adminSyncingPending}
               analyzingProjectId={analyzingProjectId}
               activeProjectId={activeProject?.id ?? null}
+              onUnlockSharedFeed={handleUnlockSharedFeed}
               onRefresh={refreshAdminLocal}
               onSyncPending={() => void handleAdminSyncPending()}
               onSelectProject={(id, targetTab) => {
@@ -1088,6 +1266,7 @@ export default function App() {
 
       <EmailAuthModal
         isOpen={authModalOpen}
+        initialMode={authModalMode}
         gasWebhookUrl={gasWebhookUrl}
         language={language}
         onClose={() => setAuthModalOpen(false)}

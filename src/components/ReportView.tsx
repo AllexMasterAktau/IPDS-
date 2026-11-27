@@ -298,7 +298,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
     <div className="w-full max-w-[1600px] mx-auto py-4 px-4 sm:px-6 lg:px-8 space-y-5">
       {/* Верхняя панель действий отчёта */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#E5E0D5]">
-        <div>
+        <div className="min-w-0 max-w-full flex-1">
           {isStandaloneWindow && (
             <a
               href="/"
@@ -308,18 +308,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
               <span>{t.report.backToTerminal}</span>
             </a>
           )}
-          <div className="text-xs text-[#5C6066] leading-snug">
+          <div className="text-xs text-[#5C6066] leading-snug break-words [overflow-wrap:anywhere]">
             {regionLabel} · {displayCurrency} ({displaySymbol}) · {t.report.initiator}:{' '}
             {project.fullName}
             {project.okedCode ? ` · ОКЭД ${project.okedCode}` : ''}
             {hasOverrides ? ` · ${t.report.manuallyRecalculated}` : ''}
             {fxNoteText}
           </div>
-          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug mt-0.5">
+          <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] leading-snug mt-0.5 break-words [overflow-wrap:anywhere]">
             {project.projectName}
           </h2>
           {(project.businessScope || project.activityType) && (
-            <div className="text-[11px] text-[#5C6066] mt-0.5">
+            <div className="text-[11px] text-[#5C6066] mt-0.5 break-words [overflow-wrap:anywhere]">
               {[project.businessScope, project.activityType].filter(Boolean).join(' · ')}
             </div>
           )}
@@ -837,29 +837,29 @@ export const ReportView: React.FC<ReportViewProps> = ({
         </div>
 
         {/* Правовой и регуляторный срез по региону и ОКЭД */}
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-2 text-sm font-bold text-[#1E2022]">
-              <Scale className="w-4 h-4 text-[#9A6E2E] shrink-0" />
-              <span>
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#D8C7A5] shadow-[0_2px_10px_rgba(22,24,26,0.03)] p-4 sm:p-5 space-y-3 max-w-full box-border">
+          <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+            <div className="inline-flex items-start gap-2 text-sm font-bold text-[#1E2022] min-w-0 max-w-full flex-1">
+              <Scale className="w-4 h-4 text-[#9A6E2E] shrink-0 mt-0.5" />
+              <span className="break-words [overflow-wrap:anywhere] whitespace-normal">
                 {t.report.legalTitle}: {regionLabel}
               </span>
             </div>
             {(project.okedCode || legalCompliance.suggestedOkedCode) && (
-              <span className="px-2.5 py-0.5 rounded bg-[#FFFFFF] border border-[#D8C7A5] font-mono-tabular text-xs font-semibold text-[#9A6E2E]">
+              <span className="px-2.5 py-0.5 rounded bg-[#FFFFFF] border border-[#D8C7A5] font-mono-tabular text-xs font-semibold text-[#9A6E2E] break-words [overflow-wrap:anywhere] whitespace-normal max-w-full">
                 ОКЭД: {project.okedCode || legalCompliance.suggestedOkedCode}
               </span>
             )}
           </div>
 
-          <p className="text-xs text-[#3A3D42] leading-snug">
+          <p className="text-xs text-[#3A3D42] leading-snug break-words [overflow-wrap:anywhere]">
             {legalCompliance.jurisdictionSummary}
           </p>
 
           {(legalCompliance.activityClassificationStatus === 'missing_suggested' ||
             legalCompliance.missingFieldsWarning) && (
-            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2 text-xs leading-snug">
-              <div className="font-semibold text-amber-900">
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3.5 sm:p-4 space-y-2.5 text-xs leading-snug max-w-full box-border">
+              <div className="font-semibold text-amber-900 break-words [overflow-wrap:anywhere]">
                 {t.report.legalMissingAlert}{' '}
                 <span className="font-normal">{legalCompliance.missingFieldsWarning}</span>
               </div>
@@ -1037,33 +1037,34 @@ export const ReportView: React.FC<ReportViewProps> = ({
           ======================================================================== */}
       <div
         aria-hidden="true"
-        className="fixed -left-[99999px] top-0 w-[920px] pointer-events-none"
+        className="print-sheet-wrapper fixed -left-[99999px] top-0 w-[760px] max-w-full pointer-events-none"
       >
         <div
           ref={pdfSheetRef}
           id="pdf-export-sheet"
-          className="print-only-sheet bg-white text-slate-900 p-8 space-y-6"
+          className="print-only-sheet w-full max-w-full box-border bg-white text-slate-900 p-6 space-y-5 break-words [overflow-wrap:anywhere]"
           style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}
         >
           {/* Тёмная шапка меморандума для идеального контраста белого логотипа IBS */}
-          <div className="rounded-xl bg-[#0B0F17] text-white p-6 flex items-center justify-between gap-6">
-            <div className="w-60 shrink-0">
+          <div className="print-break-avoid w-full max-w-full box-border rounded-xl bg-[#0B0F17] text-white p-5 flex items-center justify-between gap-5">
+            <div className="w-48 shrink-0">
               <img
                 src="/ibs_logo_transparent.png"
                 alt="Intelligent Business Systems"
                 className="w-full h-auto max-h-20 object-contain object-left"
               />
             </div>
-            <div className="text-right">
+            <div className="text-right min-w-0 flex-1 break-words [overflow-wrap:anywhere] whitespace-normal">
               <div className="text-xs text-amber-400 font-semibold">
                 {t.report.pdfMemorandum}
               </div>
-              <div className="text-lg font-bold mt-1">{project.projectName}</div>
-              <div className="text-xs text-slate-300 mt-1">
+              <div className="text-lg font-bold mt-1 leading-snug">{project.projectName}</div>
+              <div className="text-xs text-slate-300 mt-1 leading-snug">
                 {t.report.pdfRegion}: {regionLabel} · {t.report.pdfCurrency}: {displayCurrency} (
                 {displaySymbol}) · {t.report.pdfInitiator}: {project.fullName} ({project.email})
+                {project.okedCode ? ` · ОКЭД: ${project.okedCode}` : ''}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
+              <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
                 {t.report.pdfExportDate}:{' '}
                 {new Date().toLocaleDateString(language === 'en' ? 'en-US' : 'ru-RU')}
                 {hasOverrides ? ` · ${t.report.pdfWithOverrides}` : ''}
@@ -1072,49 +1073,53 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
 
           {/* Вердикт комитета в печатной версии */}
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs space-y-1">
-            <div className="flex items-center justify-between font-bold text-slate-900">
-              <span>{t.report.verdictTitle}</span>
-              <span>{t.report.verdictLabels[committeeVerdict.verdict]}</span>
+          <div className="print-break-avoid w-full max-w-full box-border rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs space-y-1.5">
+            <div className="flex flex-wrap items-start justify-between gap-2 font-bold text-slate-900 min-w-0">
+              <span className="shrink-0">{t.report.verdictTitle}</span>
+              <span className="break-words [overflow-wrap:anywhere] whitespace-normal min-w-0">
+                {t.report.verdictLabels[committeeVerdict.verdict]}
+              </span>
             </div>
-            <p className="text-slate-700 leading-snug">{committeeVerdict.reason}</p>
+            <p className="text-slate-700 leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">
+              {committeeVerdict.reason}
+            </p>
           </div>
 
           {/* 6 KPI в PDF */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiCost}</div>
-              <div className="text-base font-bold font-mono-tabular mt-1">
+          <div className="grid grid-cols-3 gap-3 w-full max-w-full">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiCost}</div>
+              <div className="text-base font-bold font-mono-tabular mt-1 break-words [overflow-wrap:anywhere]">
                 {formatMoney(metrics.projectCost, displaySymbol, language)}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiInvestments}</div>
-              <div className="text-base font-bold font-mono-tabular text-amber-700 mt-1">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiInvestments}</div>
+              <div className="text-base font-bold font-mono-tabular text-amber-700 mt-1 break-words [overflow-wrap:anywhere]">
                 {formatMoney(metrics.investmentAmount, displaySymbol, language)}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiLaunch}</div>
-              <div className="text-base font-bold font-mono-tabular mt-1">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiLaunch}</div>
+              <div className="text-base font-bold font-mono-tabular mt-1 break-words [overflow-wrap:anywhere]">
                 {metrics.launchMonths} {t.common.monthsShort}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiStaff}</div>
-              <div className="text-base font-bold font-mono-tabular mt-1">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiStaff}</div>
+              <div className="text-base font-bold font-mono-tabular mt-1 break-words [overflow-wrap:anywhere]">
                 {metrics.headcount} {t.common.staffShort}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiRevenue}</div>
-              <div className="text-base font-bold font-mono-tabular mt-1">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiRevenue}</div>
+              <div className="text-base font-bold font-mono-tabular mt-1 break-words [overflow-wrap:anywhere]">
                 {formatMoney(metrics.monthlyRevenue, displaySymbol, language)}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3.5 bg-slate-50">
-              <div className="text-[11px] text-slate-500">{t.report.pdfKpiPayback}</div>
-              <div className="text-base font-bold font-mono-tabular text-emerald-700 mt-1">
+            <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 bg-slate-50">
+              <div className="text-[11px] text-slate-500 leading-snug">{t.report.pdfKpiPayback}</div>
+              <div className="text-base font-bold font-mono-tabular text-emerald-700 mt-1 break-words [overflow-wrap:anywhere]">
                 {metrics.paybackMonths
                   ? `${metrics.paybackMonths} ${t.common.monthsShort}`
                   : t.common.moreThan60Months}
@@ -1123,23 +1128,25 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
 
           {/* Контур 1 в PDF */}
-          <div className="space-y-4">
-            <h2 className="text-base font-bold border-b border-slate-200 pb-1.5">
+          <div className="space-y-4 w-full max-w-full">
+            <h2 className="print-keep-with-next text-base font-bold border-b border-slate-200 pb-1.5 break-words [overflow-wrap:anywhere]">
               {t.report.contour1Title}
             </h2>
-            <p className="text-xs text-slate-700 leading-relaxed">{analysis.executiveSummary}</p>
-            <div className="grid grid-cols-3 gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <div>
+            <p className="text-xs text-slate-700 leading-relaxed break-words [overflow-wrap:anywhere]">
+              {analysis.executiveSummary}
+            </p>
+            <div className="print-break-avoid grid grid-cols-3 gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3.5 w-full max-w-full box-border">
+              <div className="min-w-0">
                 <span className="text-slate-500">{t.report.pdfAnnualRevenue}: </span>
                 <span className="font-mono-tabular font-semibold">
                   {formatCompactMoney(metrics.annualRevenue, displaySymbol, language)}
                 </span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-slate-500">{t.report.pdfEbitdaMargin}: </span>
                 <span className="font-mono-tabular font-semibold">{metrics.ebitdaMarginPct}%</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-slate-500">{t.report.pdfAnnualRoi}: </span>
                 <span className="font-mono-tabular font-semibold">{metrics.roiAnnualPct}%</span>
               </div>
@@ -1154,18 +1161,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
             />
 
             {/* Независимая переоценка и аудит комитета в печатной версии */}
-            <div className="grid grid-cols-3 gap-3 text-xs pt-2">
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+            <div className="grid grid-cols-3 gap-3 text-xs pt-2 w-full max-w-full">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-amber-800">{t.report.valProjectTitle}</div>
                 <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedProjectValue}</div>
                 <div className="font-bold text-slate-900">{independentValuation.realisticProjectValueRange}</div>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-amber-800">{t.report.valInvestmentTitle}</div>
                 <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedInvestment}</div>
                 <div className="font-bold text-slate-900">{independentValuation.realisticInvestmentAmount}</div>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-amber-800">{t.report.valPaybackTitle}</div>
                 <div className="text-slate-500">{t.report.claimedLabel}: {independentValuation.claimedPayback}</div>
                 <div className="font-bold text-slate-900">
@@ -1176,40 +1183,70 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
 
           {/* Контур 2 в PDF */}
-          <div className="space-y-3 pt-2">
-            <h2 className="text-base font-bold border-b border-slate-200 pb-1.5">
+          <div className="space-y-3 pt-2 w-full max-w-full">
+            <h2 className="print-keep-with-next text-base font-bold border-b border-slate-200 pb-1.5 break-words [overflow-wrap:anywhere]">
               {t.report.contour2Title}
             </h2>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5">
-              <div className="font-semibold text-slate-900">
+            <div className="print-break-avoid w-full max-w-full box-border rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs space-y-2">
+              <div className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere] whitespace-normal">
                 {t.report.legalTitle}: {regionLabel} (ОКЭД: {project.okedCode || legalCompliance.suggestedOkedCode || '—'})
               </div>
-              <p className="text-slate-700">{legalCompliance.jurisdictionSummary}</p>
-              <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
-                <div><span className="font-semibold">{t.report.legalTaxCode}:</span> {legalCompliance.taxCodeChecks}</div>
-                <div><span className="font-semibold">{t.report.legalEntrepreneurialCode}:</span> {legalCompliance.entrepreneurialCodeChecks}</div>
-                <div><span className="font-semibold">{t.report.legalCivilCode}:</span> {legalCompliance.civilCodeChecks}</div>
-                <div><span className="font-semibold">{t.report.legalCriminalCode}:</span> {legalCompliance.criminalCodeRisks}</div>
+              <p className="text-slate-700 leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">
+                {legalCompliance.jurisdictionSummary}
+              </p>
+              {(legalCompliance.activityClassificationStatus === 'missing_suggested' ||
+                legalCompliance.missingFieldsWarning) && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950 space-y-1 break-words [overflow-wrap:anywhere] whitespace-normal">
+                  <div className="font-semibold">
+                    {t.report.legalMissingAlert}{' '}
+                    <span className="font-normal">{legalCompliance.missingFieldsWarning}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-700">
+                    {t.report.legalSuggestedScope}: {legalCompliance.suggestedBusinessScope || '—'} ·{' '}
+                    {t.report.legalSuggestedActivity}: {legalCompliance.suggestedActivityType || '—'} ·{' '}
+                    {t.report.legalSuggestedOked}: {legalCompliance.suggestedOkedCode || '—'}
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3 pt-1 text-slate-700 w-full max-w-full">
+                <div className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  <span className="font-semibold">{t.report.legalTaxCode}:</span> {legalCompliance.taxCodeChecks}
+                </div>
+                <div className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  <span className="font-semibold">{t.report.legalEntrepreneurialCode}:</span> {legalCompliance.entrepreneurialCodeChecks}
+                </div>
+                <div className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  <span className="font-semibold">{t.report.legalCivilCode}:</span> {legalCompliance.civilCodeChecks}
+                </div>
+                <div className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  <span className="font-semibold">{t.report.legalCriminalCode}:</span> {legalCompliance.criminalCodeRisks}
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 w-full max-w-full">
               {analysis.risks.map((risk) => {
                 const sev = getSeverityMeta(risk.severity, language, true);
                 return (
                   <div
                     key={risk.id}
-                    className="rounded-lg border border-slate-200 p-3 space-y-1 text-xs"
+                    className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1.5 text-xs"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 font-medium">{risk.dimensionLabel}</span>
-                      <span className={`inline-flex items-center gap-1 ${sev.cls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
+                      <span className="text-slate-500 font-medium min-w-0 break-words [overflow-wrap:anywhere]">
+                        {risk.dimensionLabel}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 shrink-0 ${sev.cls}`}>
                         {sev.icon}
                         <span>{sev.label}</span>
                       </span>
                     </div>
-                    <div className="font-semibold text-slate-900">{risk.title}</div>
-                    <div className="text-slate-600 leading-snug">{risk.description}</div>
-                    <div className="text-slate-700 pt-1 border-t border-slate-100">
+                    <div className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]">
+                      {risk.title}
+                    </div>
+                    <div className="text-slate-600 leading-snug break-words [overflow-wrap:anywhere]">
+                      {risk.description}
+                    </div>
+                    <div className="text-slate-700 pt-1.5 border-t border-slate-100 break-words [overflow-wrap:anywhere]">
                       <span className="font-semibold">{t.report.pdfMitigationShort}: </span>
                       {risk.mitigation}
                     </div>
@@ -1218,39 +1255,39 @@ export const ReportView: React.FC<ReportViewProps> = ({
               })}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-2 text-xs">
-              <div>
+            <div className="grid grid-cols-2 gap-4 pt-2 text-xs w-full max-w-full">
+              <div className="print-break-avoid min-w-0">
                 <div className="font-semibold mb-1">{t.report.redFlagsTitle}</div>
                 <ul className="list-disc pl-4 space-y-1 text-rose-800">
                   {committeeAudit.unverifiedRedFlags.map((f, i) => (
-                    <li key={i}>{f}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{f}</li>
                   ))}
                 </ul>
               </div>
-              <div>
+              <div className="print-break-avoid min-w-0">
                 <div className="font-semibold mb-1">{t.report.hardQuestionsTitle}</div>
                 <ol className="list-decimal pl-4 space-y-1 text-slate-700">
                   {committeeAudit.founderHardQuestions.map((q, i) => (
-                    <li key={i}>{q}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{q}</li>
                   ))}
                 </ol>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-2 text-xs">
-              <div>
+            <div className="grid grid-cols-2 gap-4 pt-2 text-xs w-full max-w-full">
+              <div className="print-break-avoid min-w-0">
                 <div className="font-semibold mb-1">{t.report.pdfAssumptionsShort}</div>
                 <ul className="list-disc pl-4 space-y-1 text-slate-700">
                   {analysis.assumptions.map((a, i) => (
-                    <li key={i}>{a}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{a}</li>
                   ))}
                 </ul>
               </div>
-              <div>
+              <div className="print-break-avoid min-w-0">
                 <div className="font-semibold mb-1">{t.report.pdfStepsShort}</div>
                 <ul className="list-decimal pl-4 space-y-1 text-slate-700">
                   {analysis.preLaunchSteps.map((s, i) => (
-                    <li key={i}>{s}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{s}</li>
                   ))}
                 </ul>
               </div>
@@ -1258,43 +1295,45 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
 
           {/* Контур 3 в печатной версии */}
-          <div className="space-y-3 pt-2">
-            <h2 className="text-base font-bold border-b border-slate-200 pb-1.5">
+          <div className="space-y-3 pt-2 w-full max-w-full">
+            <h2 className="print-keep-with-next text-base font-bold border-b border-slate-200 pb-1.5 break-words [overflow-wrap:anywhere]">
               {t.report.contour3Title}
             </h2>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1 text-xs">
+            <div className="print-break-avoid w-full max-w-full box-border rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-1.5 text-xs">
               <div className="font-semibold text-amber-800">{t.report.recConclusionTitle}</div>
-              <p className="text-slate-700 leading-snug">{recommendations.analystConclusion}</p>
+              <p className="text-slate-700 leading-relaxed break-words [overflow-wrap:anywhere]">
+                {recommendations.analystConclusion}
+              </p>
             </div>
-            <div className="grid grid-cols-3 gap-3 text-xs">
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+            <div className="grid grid-cols-3 gap-3 text-xs w-full max-w-full">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-slate-900">{t.report.recMitigationTitle}</div>
                 <ul className="list-disc pl-4 space-y-1 text-slate-700">
                   {recommendations.riskMitigationMeasures.map((m, i) => (
-                    <li key={i}>{m}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{m}</li>
                   ))}
                 </ul>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-slate-900">{t.report.recCrisisTitle}</div>
                 <ul className="list-decimal pl-4 space-y-1 text-slate-700">
                   {recommendations.crisisAndBottleneckPlan.map((c, i) => (
-                    <li key={i}>{c}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{c}</li>
                   ))}
                 </ul>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3 space-y-1">
+              <div className="print-break-avoid min-w-0 box-border rounded-lg border border-slate-200 p-3.5 space-y-1">
                 <div className="font-semibold text-slate-900">{t.report.recGrowthTitle}</div>
                 <ul className="list-disc pl-4 space-y-1 text-slate-700">
                   {recommendations.growthPlanAndMetrics.map((g, i) => (
-                    <li key={i}>{g}</li>
+                    <li key={i} className="break-words [overflow-wrap:anywhere]">{g}</li>
                   ))}
                 </ul>
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+          <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
             <span>{t.report.pdfFooterLeft}</span>
             <span>{t.report.pdfFooterRight}</span>
           </div>

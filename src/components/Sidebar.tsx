@@ -21,6 +21,7 @@ interface SidebarProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   onOpenAuthModal: () => void;
+  onOpenCreatorAuthModal?: () => void;
   onSwitchEmail: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
@@ -40,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
   onOpenAuthModal,
+  onOpenCreatorAuthModal,
   onSwitchEmail,
   onLogout,
   isAuthenticated,
@@ -221,7 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="text-xs font-medium text-[#FAF8F5] truncate">
               {activeUserEmail}
             </div>
-            <div className="flex items-center gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -244,20 +246,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <LogOut className="w-3 h-3" />
                 <span>{t.sidebar.logout}</span>
               </button>
+              {!isAdmin && onOpenCreatorAuthModal && (
+                <>
+                  <span className="text-[#4B4F57] text-xs">·</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenCreatorAuthModal();
+                      onCloseMobile();
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-[#9A9EA6] hover:text-[#C99B52] transition-colors cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>{t.sidebar.creatorLogin}</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => {
-              onOpenAuthModal();
-              onCloseMobile();
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/[0.22] hover:border-white/[0.36] bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] text-xs font-medium text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5F3EE]/30 transition-colors cursor-pointer"
-          >
-            <KeyRound className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
-            <span className="truncate">{t.sidebar.loginByEmail}</span>
-          </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                onOpenAuthModal();
+                onCloseMobile();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/[0.22] hover:border-white/[0.36] bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] text-xs font-medium text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5F3EE]/30 transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-[#F5F3EE] shrink-0" />
+              <span className="truncate">{t.sidebar.loginByEmail}</span>
+            </button>
+            {onOpenCreatorAuthModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenCreatorAuthModal();
+                  onCloseMobile();
+                }}
+                className="w-full flex items-center justify-center gap-1.5 text-[11px] text-[#9A9EA6] hover:text-[#C99B52] transition-colors cursor-pointer"
+              >
+                <ShieldCheck className="w-3 h-3 shrink-0" />
+                <span>{t.sidebar.creatorLogin}</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 

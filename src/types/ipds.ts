@@ -184,11 +184,15 @@ export interface ProjectRecord {
   currencyCode: string;
   currencySymbol: string;
   documents: LocalDocumentDigest[];
+  docsCount?: number;
   analysis: ProjectAnalysis | null;
   manualOverrides: Partial<FinancialInputs>;
   dialogue: DialogueMessage[];
   leadSyncStatus: LeadSyncStatus;
   leadSyncMessage?: string;
+  sharedSyncStatus?: 'synced' | 'pending' | 'unconfigured' | 'error';
+  sharedSyncedAt?: string;
+  sharedFromDatabase?: boolean;
   createdAt: string;
   updatedAt: string;
 }

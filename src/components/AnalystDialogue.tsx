@@ -433,15 +433,17 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
                   <span>{t.dialogue.modelBtn}</span>
                 </button>
 
-                <a
-                  href={reportTabUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
-                  <span>{t.common.getReport}</span>
-                </a>
+                {!project.sharedFromDatabase && (
+                  <a
+                    href={reportTabUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap shadow-xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#F5F3EE]" />
+                    <span>{t.common.getReport}</span>
+                  </a>
+                )}
               </>
             )}
           </div>
@@ -596,7 +598,17 @@ export const AnalystDialogue: React.FC<AnalystDialogueProps> = ({
         )}
 
         {project.documents.length === 0 ? (
-          <div className="text-xs text-[#5C6066] leading-snug">{t.dialogue.docsEmpty}</div>
+          <div className="space-y-1.5">
+            {(project.docsCount ?? 0) > 0 && (
+              <div className="rounded-lg bg-[#EFECE4] border border-[#D8C7A5] px-3 py-2 text-xs text-[#4B4333] leading-snug">
+                {t.dialogue.docsRemoteNotice.replace(
+                  '{count}',
+                  String(project.docsCount ?? 0)
+                )}
+              </div>
+            )}
+            <div className="text-xs text-[#5C6066] leading-snug">{t.dialogue.docsEmpty}</div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {project.documents.map((doc) => (

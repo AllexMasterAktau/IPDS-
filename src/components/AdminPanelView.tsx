@@ -3,9 +3,13 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  Database,
   Download,
   ExternalLink,
+  FileDown,
+  FileText,
   FolderKanban,
+  KeyRound,
   MessageSquare,
   Play,
   RefreshCw,
@@ -27,23 +31,31 @@ import {
   calculateDerivedMetrics,
   formatCompactMoney,
   getCurrencySymbol,
+  getEffectiveCommitteeVerdict,
+  getEffectiveInputs,
   getFxConversionFactor,
   getRegionDisplayLabel,
   normalizeCurrencyCode,
 } from '../utils/financialModel';
 import { deduplicateProjects } from '../utils/projectDedup';
+import { exportReportToPdf } from '../utils/pdfExport';
 
 interface AdminPanelViewProps {
   language: Language;
   displayCurrency: CurrencyCode;
   fxRates: FxRateMap;
+  adminEmail: string;
   projects: ProjectRecord[];
   users: AdminUserSummary[];
   gasConfigured: boolean;
+  firestoreConfigured: boolean;
+  creatorDbUnlocked: boolean;
   loading: boolean;
   syncingPending: boolean;
   analyzingProjectId: string | null;
   activeProjectId: string | null;
+  creatorSyncError?: string | null;
+  onUnlockSharedFeed?: (adminKey: string) => Promise<boolean>;
   onRefresh: () => void;
   onSyncPending: () => void;
   onSelectProject: (projectId: string, targetTab: 'dialogue' | 'report') => void;
@@ -51,20 +63,25 @@ interface AdminPanelViewProps {
   onDeleteProject: (projectId: string) => void;
 }
 
-type AdminSubTab = 'projects' | 'contacts';
+type AdminSubTab = 'ready' | 'projects' | 'contacts';
 type StatusFilter = 'all' | 'ready' | 'draft';
 
 export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   language,
   displayCurrency,
   fxRates,
+  adminEmail,
   projects,
   users,
   gasConfigured,
+  firestoreConfigured,
+  creatorDbUnlocked,
   loading,
   syncingPending,
   analyzingProjectId,
   activeProjectId,
+  creatorSyncError,
+  onUnlockSharedFeed,
   onRefresh,
   onSyncPending,
   onSelectProject,
@@ -74,11 +91,15 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const t = getTranslations(language);
   const displaySymbol = getCurrencySymbol(displayCurrency);
 
-  const [subTab, setSubTab] = useState<AdminSubTab>('projects');
+  const [subTab, setSubTab] = useState<AdminSubTab>('ready');
   const [query, setQuery] = useState('');
   const [regionFilter, setRegionFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [unlockKeyInput, setUnlockKeyInput] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const [pdfProjectId, setPdfProjectId] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const uniqueProjects = useMemo(() => deduplicateProjects(projects), [projects]);
 
@@ -102,7 +123,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       const em = proj.email.trim().toLowerCase();
       if (em) uniqueEmails.add(em);
 
-      totalDocs += proj.documents.length;
+      totalDocs += proj.documents.length > 0 ? proj.documents.length : proj.docsCount ?? 0;
       totalMsgs += proj.dialogue.length;
 
       if (proj.leadSyncStatus === 'synced') {
@@ -193,19 +214,24 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
     return uniqueProjects.filter((proj) => {
       const regLabel = getRegionDisplayLabel(proj.region, proj.customRegion, language);
       if (regionFilter !== 'all' && regLabel !== regionFilter) return false;
-      if (statusFilter === 'ready' && !proj.analysis) return false;
-      if (statusFilter === 'draft' && proj.analysis) return false;
+      if (subTab === 'ready' && !proj.analysis) return false;
+      if (subTab !== 'ready') {
+        if (statusFilter === 'ready' && !proj.analysis) return false;
+        if (statusFilter === 'draft' && proj.analysis) return false;
+      }
       if (!q) return true;
       return (
         proj.projectName.toLowerCase().includes(q) ||
         proj.fullName.toLowerCase().includes(q) ||
         proj.email.toLowerCase().includes(q) ||
+        (proj.okedCode || '').toLowerCase().includes(q) ||
+        (proj.businessScope || '').toLowerCase().includes(q) ||
         (proj.category || '').toLowerCase().includes(q) ||
         (proj.comment || '').toLowerCase().includes(q) ||
         regLabel.toLowerCase().includes(q)
       );
     });
-  }, [uniqueProjects, query, regionFilter, statusFilter, language]);
+  }, [uniqueProjects, query, regionFilter, statusFilter, subTab, language]);
 
   const contactRows = useMemo(() => {
     const map = new Map<
@@ -258,6 +284,64 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       (a, b) => new Date(b.latestUpdatedAt).getTime() - new Date(a.latestUpdatedAt).getTime()
     );
   }, [filteredProjects, language]);
+
+  const handleDownloadCardPdf = async (proj: ProjectRecord) => {
+    if (!proj.analysis) return;
+    setPdfProjectId(proj.id);
+    setPdfError(null);
+    try {
+      const baseCurrency = normalizeCurrencyCode(
+        proj.analysis.currencyCode || proj.currencyCode
+      );
+      const fxFactor = getFxConversionFactor(baseCurrency, displayCurrency, fxRates);
+      const effectiveInputs = getEffectiveInputs(proj.analysis, proj.manualOverrides);
+      const metrics = calculateDerivedMetrics(
+        proj.analysis,
+        proj.manualOverrides,
+        fxFactor,
+        t.common.monthPrefix
+      );
+      const convertedCostStructure = proj.analysis.costStructure.map((item) => ({
+        ...item,
+        amount: Math.round(item.amount * fxFactor),
+      }));
+      await exportReportToPdf({
+        project: proj,
+        analysis: proj.analysis,
+        effectiveInputs,
+        metrics,
+        convertedCostStructure,
+        language,
+        displayCurrency,
+        displaySymbol,
+        hasOverrides: Object.keys(proj.manualOverrides || {}).length > 0,
+      });
+    } catch (err) {
+      setPdfError(
+        err instanceof Error
+          ? err.message
+          : language === 'en'
+          ? 'Failed to generate PDF.'
+          : 'Не удалось сформировать PDF.'
+      );
+    } finally {
+      setPdfProjectId(null);
+    }
+  };
+
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUnlockSharedFeed || !unlockKeyInput.trim()) return;
+    setUnlocking(true);
+    try {
+      const ok = await onUnlockSharedFeed(unlockKeyInput.trim());
+      if (ok) {
+        setUnlockKeyInput('');
+      }
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   const handleExportCsv = () => {
     const escapeCell = (val: unknown) => {
@@ -332,6 +416,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   };
 
   const renderSyncBadge = (proj: ProjectRecord) => {
+    if (proj.sharedFromDatabase) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#EFECE4] border border-[#D8C7A5] text-[11px] font-medium text-[#7B551F]">
+          <Database className="w-3 h-3 shrink-0" />
+          <span>{t.admin.sharedSourceBadge}</span>
+        </span>
+      );
+    }
     if (proj.leadSyncStatus === 'synced') {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-700">
@@ -365,11 +457,25 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
       {/* Шапка панели администратора */}
       <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-4 sm:p-5 shadow-[0_2px_12px_rgba(22,24,26,0.04)] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="space-y-1 leading-snug">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#9A6E2E]">
-            <ShieldCheck className="w-4 h-4" />
-            <span>{t.admin.badge}</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#9A6E2E]">
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4" />
+              <span>{t.admin.badge}</span>
+            </span>
             <span className="text-[#8B8F96]">·</span>
-            <span className="font-mono-tabular text-[#5C6066]">allmasters13@gmail.com</span>
+            <span className="font-mono-tabular text-[#5C6066]">{adminEmail}</span>
+            <span className="text-[#8B8F96]">·</span>
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] font-medium ${
+                firestoreConfigured ? 'text-emerald-700' : 'text-[#5C6066]'
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>
+                {t.admin.dbStatusLabel}{' '}
+                {firestoreConfigured ? t.admin.dbConnected : t.admin.dbLocalOnly}
+              </span>
+            </span>
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-[#1E2022] tracking-tight leading-snug">
             {t.admin.title}
@@ -415,6 +521,55 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Подтверждение ключа администратора после перезагрузки страницы (когда подключена Firestore) */}
+      {firestoreConfigured && !creatorDbUnlocked && onUnlockSharedFeed && (
+        <form
+          onSubmit={(e) => void handleUnlockSubmit(e)}
+          className="rounded-xl bg-[#EFECE4] border border-[#D8C7A5] p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+        >
+          <div className="space-y-0.5">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1E2022]">
+              <KeyRound className="w-4 h-4 text-[#9A6E2E]" />
+              <span>{t.admin.unlockTitle}</span>
+            </div>
+            <p className="text-xs text-[#4B4333]">{t.admin.unlockDesc}</p>
+            {creatorSyncError && (
+              <p className="text-xs font-medium text-rose-700 pt-1">{creatorSyncError}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="password"
+              required
+              value={unlockKeyInput}
+              onChange={(e) => setUnlockKeyInput(e.target.value)}
+              placeholder={t.admin.unlockPlaceholder}
+              className="px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#C9C1B2] focus:border-[#B88B4A] focus:outline-none text-xs font-mono-tabular text-[#1E2022] w-52"
+            />
+            <button
+              type="submit"
+              disabled={unlocking || !unlockKeyInput.trim()}
+              className="px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] disabled:opacity-60 text-xs font-semibold text-[#F5F3EE] cursor-pointer whitespace-nowrap"
+            >
+              {unlocking ? t.admin.unlocking : t.admin.unlockBtn}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {pdfError && (
+        <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-2.5 text-xs text-rose-800 flex items-center justify-between">
+          <span>{pdfError}</span>
+          <button
+            type="button"
+            onClick={() => setPdfError(null)}
+            className="font-semibold text-rose-700 hover:text-rose-950 cursor-pointer"
+          >
+            {t.common.hide}
+          </button>
+        </div>
+      )}
 
       {/* Сводные KPI-карточки */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -557,22 +712,33 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 
       {/* Панель переключения вкладок и фильтров */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="inline-grid grid-cols-2 gap-1 p-1 rounded-lg bg-[#EAE5DB] border border-[#C9C1B2] self-start">
+        <div className="inline-grid grid-cols-3 gap-1 p-1 rounded-lg bg-[#EAE5DB] border border-[#C9C1B2] self-start">
+          <button
+            type="button"
+            onClick={() => setSubTab('ready')}
+            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer border whitespace-nowrap ${
+              subTab === 'ready'
+                ? 'bg-[#1A1C1F] border-white/[0.26] hover:border-white/[0.38] text-[#F5F3EE] font-semibold'
+                : 'border-transparent hover:border-[#8C8476]/50 text-[#5C6066] hover:text-[#1E2022]'
+            }`}
+          >
+            {t.admin.tabReadyFeed} ({analytics.analyzedCount})
+          </button>
           <button
             type="button"
             onClick={() => setSubTab('projects')}
-            className={`px-3.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer border whitespace-nowrap ${
+            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer border whitespace-nowrap ${
               subTab === 'projects'
                 ? 'bg-[#1A1C1F] border-white/[0.26] hover:border-white/[0.38] text-[#F5F3EE] font-semibold'
                 : 'border-transparent hover:border-[#8C8476]/50 text-[#5C6066] hover:text-[#1E2022]'
             }`}
           >
-            {t.admin.tabProjects} ({filteredProjects.length})
+            {t.admin.tabProjects} ({analytics.totalProjects})
           </button>
           <button
             type="button"
             onClick={() => setSubTab('contacts')}
-            className={`px-3.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer border whitespace-nowrap ${
+            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer border whitespace-nowrap ${
               subTab === 'contacts'
                 ? 'bg-[#1A1C1F] border-white/[0.26] hover:border-white/[0.38] text-[#F5F3EE] font-semibold'
                 : 'border-transparent hover:border-[#8C8476]/50 text-[#5C6066] hover:text-[#1E2022]'
@@ -607,28 +773,40 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
             ))}
           </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
-          >
-            <option value="all">{t.admin.filterAllStatuses}</option>
-            <option value="ready">{t.admin.filterReady}</option>
-            <option value="draft">{t.admin.filterDraft}</option>
-          </select>
+          {subTab !== 'ready' && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="px-3 py-2 rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] focus:border-[#B88B4A] focus:outline-none text-xs text-[#1E2022]"
+            >
+              <option value="all">{t.admin.filterAllStatuses}</option>
+              <option value="ready">{t.admin.filterReady}</option>
+              <option value="draft">{t.admin.filterDraft}</option>
+            </select>
+          )}
         </div>
       </div>
 
-      {/* Содержимое вкладок: Все проекты / Контакты */}
+      {/* Содержимое вкладок: Готовые анализы / Все проекты / Контакты */}
       {filteredProjects.length === 0 ? (
-        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-10 text-center text-sm text-[#5C6066]">
-          {uniqueProjects.length === 0 ? t.admin.emptyAll : t.admin.emptyFiltered}
+        <div className="rounded-xl bg-[#FAF8F3] border border-[#E5E0D5] p-10 text-center space-y-3 text-sm text-[#5C6066]">
+          <div>{uniqueProjects.length === 0 ? t.admin.emptyAll : t.admin.emptyFiltered}</div>
+          {subTab === 'ready' && uniqueProjects.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSubTab('projects')}
+              className="px-3.5 py-1.5 rounded-lg bg-[#1A1C1F] text-[#F5F3EE] text-xs font-semibold cursor-pointer"
+            >
+              {t.admin.tabProjects} ({analytics.totalProjects})
+            </button>
+          )}
         </div>
-      ) : subTab === 'projects' ? (
+      ) : subTab !== 'contacts' ? (
         <div className="space-y-3">
           {filteredProjects.map((proj) => {
             const isSelected = proj.id === activeProjectId;
             const isAnalyzing = analyzingProjectId === proj.id;
+            const isGeneratingPdf = pdfProjectId === proj.id;
             const regionLabel = getRegionDisplayLabel(proj.region, proj.customRegion, language);
             const baseCurrency = normalizeCurrencyCode(
               proj.analysis?.currencyCode || proj.currencyCode
@@ -642,6 +820,12 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   t.common.monthPrefix
                 )
               : null;
+            const verdict =
+              proj.analysis && derived
+                ? getEffectiveCommitteeVerdict(proj.analysis, derived, language)
+                : null;
+            const docsDisplayCount =
+              proj.documents.length > 0 ? proj.documents.length : proj.docsCount ?? 0;
             const reportTabUrl = `/?view=report&projectId=${encodeURIComponent(proj.id)}`;
 
             return (
@@ -654,13 +838,21 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 }`}
               >
                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                  <div className="space-y-1 min-w-0 leading-snug">
+                  <div className="space-y-1 min-w-0 leading-snug flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C6066]">
                       <span className="font-semibold text-[#1E2022]">{proj.fullName}</span>
                       <span>·</span>
                       <span className="font-mono-tabular text-[#9A6E2E]">{proj.email}</span>
                       <span>·</span>
                       <span>{regionLabel}</span>
+                      {proj.okedCode && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono-tabular text-[#3A3D42]">
+                            ОКЭД {proj.okedCode}
+                          </span>
+                        </>
+                      )}
                       {proj.category && (
                         <>
                           <span>·</span>
@@ -674,19 +866,38 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                         )}
                       </span>
                       {renderSyncBadge(proj)}
+                      {verdict && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold ${
+                            verdict.verdict === 'GO'
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                              : verdict.verdict === 'CONDITIONAL_GO'
+                              ? 'bg-amber-50 border-amber-300 text-amber-800'
+                              : 'bg-rose-50 border-rose-300 text-rose-800'
+                          }`}
+                        >
+                          {verdict.verdict === 'CONDITIONAL_GO' ? 'CONDITIONAL GO' : verdict.verdict}
+                        </span>
+                      )}
                     </div>
 
                     <h3 className="text-base font-bold text-[#1E2022] truncate">
                       {proj.projectName}
                     </h3>
 
-                    {proj.comment && (
+                    {proj.analysis?.executiveSummary ? (
+                      <p className="text-xs text-[#3A3D42] line-clamp-2">
+                        {proj.analysis.executiveSummary}
+                      </p>
+                    ) : proj.comment ? (
                       <p className="text-xs text-[#5C6066] line-clamp-2">{proj.comment}</p>
-                    )}
+                    ) : null}
 
                     <div className="text-xs text-[#5C6066] flex flex-wrap gap-x-4 gap-y-1">
                       <span>
-                        {proj.documents.length} {t.admin.docsShort}
+                        {proj.sharedFromDatabase
+                          ? `${t.admin.docsAtAnalysisLabel} ${docsDisplayCount}`
+                          : `${docsDisplayCount} ${t.admin.docsShort}`}
                       </span>
                       <span>
                         {proj.dialogue.length} {t.admin.msgsShort}
@@ -723,25 +934,26 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   )}
 
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onSelectProject(proj.id, 'dialogue')}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-xs font-semibold text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-[#F5F3EE]" />
-                      <span>{t.admin.btnDialogue}</span>
-                    </button>
-
                     {!proj.analysis ? (
-                      <button
-                        type="button"
-                        disabled={isAnalyzing}
-                        onClick={() => onRunAnalysis(proj)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap"
-                      >
-                        <Play className="w-3.5 h-3.5 text-[#F5F3EE]" />
-                        <span>{isAnalyzing ? t.admin.btnAnalyzing : t.admin.btnAnalyze}</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onSelectProject(proj.id, 'dialogue')}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-xs font-semibold text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-[#F5F3EE]" />
+                          <span>{t.admin.btnDialogue}</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isAnalyzing}
+                          onClick={() => onRunAnalysis(proj)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] disabled:opacity-60 text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <Play className="w-3.5 h-3.5 text-[#F5F3EE]" />
+                          <span>{isAnalyzing ? t.admin.btnAnalyzing : t.admin.btnAnalyze}</span>
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button
@@ -749,17 +961,31 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                           onClick={() => onSelectProject(proj.id, 'report')}
                           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-xs font-semibold text-[#F5F3EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors cursor-pointer whitespace-nowrap"
                         >
-                          <span>{t.admin.btnModel}</span>
+                          <FileText className="w-3.5 h-3.5 text-[#F5F3EE]" />
+                          <span>{t.admin.btnOpenReview}</span>
                         </button>
-                        <a
-                          href={reportTabUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap"
+                        <button
+                          type="button"
+                          disabled={isGeneratingPdf}
+                          onClick={() => void handleDownloadCardPdf(proj)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#FAF8F3] hover:bg-[#EFECE4] border border-[#C9C1B2] hover:border-[#8C6D3F] disabled:opacity-60 text-xs font-semibold text-[#1E2022] transition-colors cursor-pointer whitespace-nowrap"
                         >
-                          <ExternalLink className="w-3.5 h-3.5 text-[#F5F3EE]" />
-                          <span>{t.admin.btnReport}</span>
-                        </a>
+                          <FileDown className="w-3.5 h-3.5 text-[#9A6E2E]" />
+                          <span>
+                            {isGeneratingPdf ? t.admin.downloadingPdf : t.admin.btnDownloadPdf}
+                          </span>
+                        </button>
+                        {!proj.sharedFromDatabase && (
+                          <a
+                            href={reportTabUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1A1C1F] hover:bg-[#26292E] active:bg-[#141618] border border-white/[0.22] hover:border-white/[0.36] text-[#F5F3EE] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1C1F]/40 transition-colors whitespace-nowrap"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-[#F5F3EE]" />
+                            <span>{t.admin.btnReport}</span>
+                          </a>
+                        )}
                       </>
                     )}
 

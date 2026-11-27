@@ -80,10 +80,10 @@ export const FinancialInfographics: React.FC<FinancialInfographicsProps> = ({
   );
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 max-w-full box-border">
       {/* График 1: Накопленный денежный поток и окупаемость */}
       <div
-        className={`xl:col-span-7 rounded-xl p-5 border ${
+        className={`xl:col-span-7 min-w-0 max-w-full box-border print-break-avoid rounded-xl p-5 border ${
           isLight
             ? 'bg-[#FAF8F3] border-[#E5E0D5] text-[#1E2022] shadow-[0_2px_10px_rgba(22,24,26,0.03)]'
             : 'bg-[#0E131D] border-white/[0.08] text-slate-100'
@@ -257,7 +257,7 @@ export const FinancialInfographics: React.FC<FinancialInfographicsProps> = ({
 
       {/* График 2: Ежемесячная экономика и структура инвестиций */}
       <div
-        className={`xl:col-span-5 rounded-xl p-5 border flex flex-col justify-between gap-5 ${
+        className={`xl:col-span-5 min-w-0 max-w-full box-border print-break-avoid rounded-xl p-5 border flex flex-col justify-between gap-5 ${
           isLight
             ? 'bg-[#FAF8F3] border-[#E5E0D5] text-[#1E2022] shadow-[0_2px_10px_rgba(22,24,26,0.03)]'
             : 'bg-[#0E131D] border-white/[0.08] text-slate-100'
@@ -363,14 +363,14 @@ export const FinancialInfographics: React.FC<FinancialInfographicsProps> = ({
             {costStructure.slice(0, 5).map((item, idx) => (
               <div
                 key={item.category}
-                className="flex items-center justify-between text-xs gap-2"
+                className="flex items-start justify-between text-xs gap-2 min-w-0"
               >
-                <span className="flex items-center gap-2 min-w-0">
+                <span className="flex items-start gap-2 min-w-0 flex-1">
                   <span
-                    className="w-2.5 h-2.5 rounded-xs shrink-0"
+                    className="w-2.5 h-2.5 rounded-xs shrink-0 mt-1"
                     style={{ backgroundColor: capexPalette[idx % capexPalette.length] }}
                   />
-                  <span className={`truncate ${isLight ? 'text-[#3A3D42]' : 'text-slate-300'}`}>
+                  <span className={`break-words [overflow-wrap:anywhere] whitespace-normal ${isLight ? 'text-[#3A3D42]' : 'text-slate-300'}`}>
                     {item.category}
                   </span>
                 </span>

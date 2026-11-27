@@ -52,26 +52,83 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 15mm;
   }
 
+  html,
   body {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: #FFFFFF !important;
     color: #0F172A !important;
+    overflow-x: visible !important;
   }
 
   .no-print {
     display: none !important;
   }
 
+  .print-sheet-wrapper {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+
   .print-only-sheet {
     display: block !important;
     position: static !important;
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     background: #FFFFFF !important;
     color: #0F172A !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+  }
+
+  .print-only-sheet *,
+  .print-only-sheet *::before,
+  .print-only-sheet *::after {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .print-only-sheet p,
+  .print-only-sheet h1,
+  .print-only-sheet h2,
+  .print-only-sheet h3,
+  .print-only-sheet h4,
+  .print-only-sheet span,
+  .print-only-sheet div,
+  .print-only-sheet li,
+  .print-only-sheet td,
+  .print-only-sheet th {
+    white-space: normal !important;
+  }
+
+  .print-break-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-keep-with-next {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
   }
 }

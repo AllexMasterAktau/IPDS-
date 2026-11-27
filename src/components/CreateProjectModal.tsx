@@ -13,7 +13,7 @@ import {
   deduplicateProjects,
   findProjectByNormalizedName,
   mergeProjectUpdate,
-  normalizeProjectName,
+  upsertUniqueProject,
 } from '../utils/projectDedup';
 
 interface CreateProjectModalProps {
@@ -199,15 +199,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       Math.random().toString(36).slice(2, 6).toUpperCase();
 
     try {
-      const targetNorm = normalizeProjectName(savedProject.projectName);
-      const updatedList = deduplicateProjects([
-        savedProject,
-        ...existingList.filter(
-          (p) =>
-            p.id !== savedProject.id &&
-            normalizeProjectName(p.projectName) !== targetNorm
-        ),
-      ]);
+      const updatedList = upsertUniqueProject(existingList, savedProject);
       localStorage.setItem('ipds_projects_v1', JSON.stringify(updatedList));
     } catch {
       // ignore storage errors

@@ -207,16 +207,11 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
   }
 
   // Авторизованный режим: отображаем ТОЛЬКО уникальные проекты подтверждённого activeUserEmail
-  const normalizedActiveEmail = (activeUserEmail || projects[0]?.email || '').trim().toLowerCase();
+  const normalizedActiveEmail = activeUserEmail.trim().toLowerCase();
   const uniqueProjects = deduplicateProjects(projects);
-  let scopedProjects = uniqueProjects.filter(
-    (p) =>
-      normalizedActiveEmail === 'allmasters13@gmail.com' ||
-      (p.email || '').trim().toLowerCase() === normalizedActiveEmail
+  const scopedProjects = uniqueProjects.filter(
+    (p) => (p.email || '').trim().toLowerCase() === normalizedActiveEmail
   );
-  if (scopedProjects.length === 0 && uniqueProjects.length > 0) {
-    scopedProjects = uniqueProjects;
-  }
 
   const filtered = scopedProjects.filter((p) => {
     const q = query.trim().toLowerCase();
@@ -331,7 +326,10 @@ export const ProjectsListView: React.FC<ProjectsListViewProps> = ({
                   </h3>
                   <div className="text-xs text-[#5C6066] flex flex-wrap gap-x-4 gap-y-1">
                     <span>
-                      {t.projects.docsCount}: {proj.documents.length}
+                      {t.projects.docsCount}:{' '}
+                      {proj.documents.length > 0
+                        ? proj.documents.length
+                        : proj.docsCount ?? 0}
                     </span>
                     <span>
                       {t.projects.msgsCount}: {proj.dialogue.length}
